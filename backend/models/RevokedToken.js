@@ -1,39 +1,50 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const revokedTokenSchema = new mongoose.Schema({
+const RevokedToken = sequelize.define('RevokedToken', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   jti: {
-    type: String,
-    required: true,
+    type: DataTypes.STRING,
+    allowNull: false,
     unique: true,
-    index: true,
-    trim: true,
+    index: true
   },
   tokenType: {
-    type: String,
-    enum: ['access', 'refresh'],
-    required: true,
+    type: DataTypes.ENUM('access', 'refresh'),
+    allowNull: false
   },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null,
-    index: true,
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Users',
+      key: 'id'
+    },
+    index: true
   },
   reason: {
-    type: String,
-    default: 'revoked',
-    trim: true,
+    type: DataTypes.STRING,
+    defaultValue: 'revoked'
   },
   expiresAt: {
-    type: Date,
-    required: true,
+    type: DataTypes.DATE,
+    allowNull: false
   },
   createdAt: {
-    type: Date,
-    default: Date.now,
-  },
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  }
+}, {
+  tableName: 'RevokedTokens',
+  timestamps: false,
+  underscored: false,
+  indexes: [
+    { fields: ['expiresAt'] }
+  ]
 });
 
-revokedTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-
-export default mongoose.model('RevokedToken', revokedTokenSchema);
+export default RevokedToken;

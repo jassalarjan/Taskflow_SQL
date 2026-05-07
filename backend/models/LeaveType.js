@@ -1,55 +1,68 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const leaveTypeSchema = new mongoose.Schema({
+const LeaveType = sequelize.define('LeaveType', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: true,
-    index: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    }
   },
   name: {
-    type: String,
-    required: true,
-    trim: true
+    type: DataTypes.STRING,
+    allowNull: false
   },
   code: {
-    type: String,
-    required: true,
-    uppercase: true,
-    trim: true
+    type: DataTypes.STRING(10),
+    allowNull: false,
+    uppercase: true
   },
   annualQuota: {
-    type: Number,
-    required: true,
-    default: 12
+    type: DataTypes.INTEGER,
+    defaultValue: 12
   },
   carryForward: {
-    type: Boolean,
-    default: false
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   },
   maxCarryForward: {
-    type: Number,
-    default: 0
+    type: DataTypes.INTEGER,
+    defaultValue: 0
   },
   color: {
-    type: String,
-    default: '#3b82f6'
+    type: DataTypes.STRING(7),
+    defaultValue: '#3b82f6'
   },
   isActive: {
-    type: Boolean,
-    default: true
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   },
   description: {
-    type: String,
-    default: ''
+    type: DataTypes.TEXT,
+    defaultValue: ''
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
 }, {
-  timestamps: true
+  tableName: 'LeaveTypes',
+  timestamps: true,
+  underscored: false,
+  indexes: [
+    { fields: ['workspaceId', 'code'], unique: true }
+  ]
 });
-
-// Compound unique index
-leaveTypeSchema.index({ workspaceId: 1, code: 1 }, { unique: true });
-
-const LeaveType = mongoose.model('LeaveType', leaveTypeSchema);
 
 export default LeaveType;

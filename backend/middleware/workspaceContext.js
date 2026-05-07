@@ -1,6 +1,9 @@
 import User from '../models/User.js';
 import Workspace from '../models/Workspace.js';
-import mongoose from 'mongoose';
+
+// UUID validation pattern (standard RFC 4122 UUID)
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isValidUUID = (value) => UUID_PATTERN.test(value);
 
 /**
  * Workspace Context Middleware
@@ -36,7 +39,7 @@ const workspaceContext = async (req, res, next) => {
     const requestedWorkspaceId = req.headers['x-workspace-id'];
     
     // Validate workspace ID format if provided (prevents injection attacks)
-    if (requestedWorkspaceId && !mongoose.Types.ObjectId.isValid(requestedWorkspaceId)) {
+    if (requestedWorkspaceId && !isValidUUID(requestedWorkspaceId)) {
       return res.status(400).json({ 
         message: 'Invalid workspace ID format',
         error: 'INVALID_WORKSPACE_ID'

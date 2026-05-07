@@ -1,115 +1,75 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const changeLogSchema = new mongoose.Schema({
+const ChangeLog = sequelize.define('ChangeLog', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   event_type: {
-    type: String,
-    required: true,
-    enum: [
-      'user_login',
-      'user_logout',
-      'user_created',
-      'user_updated',
-      'user_deleted',
-      'user_bulk_deleted',
-      'task_created',
-      'task_updated',
-      'task_deleted',
-      'task_status_changed',
-      'task_assigned',
-      'task_unassigned',
-      'team_created',
-      'team_updated',
-      'team_deleted',
-      'team_bulk_deleted',
-      'team_member_added',
-      'team_member_removed',
-      'report_generated',
-      'automation_triggered',
-      'notification_sent',
-      'comment_added',
-      'comment_updated',
-      'comment_deleted',
-      'bulk_import',
-      'password_reset_request',
-      'password_reset',
-      'changelog_cleared',
-      'leave_cancelled',
-      'system_event'
-    ]
+    type: DataTypes.ENUM('user_login', 'user_logout', 'user_created', 'user_updated', 'user_deleted', 'user_bulk_deleted', 'task_created', 'task_updated', 'task_deleted', 'task_status_changed', 'task_assigned', 'task_unassigned', 'team_created', 'team_updated', 'team_deleted', 'team_bulk_deleted', 'team_member_added', 'team_member_removed', 'report_generated', 'automation_triggered', 'notification_sent', 'comment_added', 'comment_updated', 'comment_deleted', 'bulk_import', 'password_reset_request', 'password_reset', 'changelog_cleared', 'leave_cancelled', 'system_event'),
+    allowNull: false
   },
   user_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: false
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
-  user_email: {
-    type: String,
-    required: false
-  },
-  user_name: {
-    type: String,
-    required: false
-  },
-  user_role: {
-    type: String,
-    required: false
-  },
-  user_ip: {
-    type: String,
-    required: false
-  },
+  user_email: DataTypes.STRING,
+  user_name: DataTypes.STRING,
+  user_role: DataTypes.STRING,
+  user_ip: DataTypes.STRING(45),
   target_type: {
-    type: String,
-    enum: ['task', 'user', 'team', 'report', 'comment', 'system', 'notification', 'automation', 'email'],
-    required: false
+    type: DataTypes.ENUM('task', 'user', 'team', 'report', 'comment', 'system', 'notification', 'automation', 'email'),
+    allowNull: true
   },
-  target_id: {
-    type: String,
-    required: false
-  },
-  target_name: {
-    type: String,
-    required: false
-  },
+  target_id: DataTypes.STRING,
+  target_name: DataTypes.STRING,
   action: {
-    type: String,
-    required: true
+    type: DataTypes.STRING,
+    allowNull: false
   },
   description: {
-    type: String,
-    required: true
+    type: DataTypes.TEXT,
+    allowNull: false
   },
   metadata: {
-    type: mongoose.Schema.Types.Mixed,
-    default: {}
+    type: DataTypes.JSON,
+    defaultValue: {}
   },
   changes: {
-    type: Object,
-    default: {}
+    type: DataTypes.JSON,
+    defaultValue: {}
   },
-  // WORKSPACE SUPPORT: All audit logs belong to a workspace (null for system admins)
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: false,
-    default: null,
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    },
     index: true
   },
   created_at: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
 }, {
-  timestamps: false
+  tableName: 'ChangeLogs',
+  timestamps: false,
+  underscored: false,
+  indexes: [
+    { fields: ['created_at'] },
+    { fields: ['event_type'] },
+    { fields: ['user_id'] },
+    { fields: ['target_type', 'target_id'] },
+    { fields: ['workspaceId', 'created_at'] },
+    { fields: ['workspaceId', 'event_type'] }
+  ]
 });
 
-// Index for faster queries
-changeLogSchema.index({ created_at: -1 });
-changeLogSchema.index({ event_type: 1 });
-changeLogSchema.index({ user_id: 1 });
-changeLogSchema.index({ target_type: 1, target_id: 1 });
-// WORKSPACE SUPPORT: Workspace-scoped indexes
-changeLogSchema.index({ workspaceId: 1, created_at: -1 });
-changeLogSchema.index({ workspaceId: 1, event_type: 1 });
-
-export default mongoose.model('ChangeLog', changeLogSchema);
+export default ChangeLog;

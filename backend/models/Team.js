@@ -1,55 +1,68 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const teamSchema = new mongoose.Schema({
+const Team = sequelize.define('Team', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   name: {
-    type: String,
-    required: [true, 'Team name is required'],
-    trim: true,
+    type: DataTypes.STRING,
+    allowNull: false,
     validate: {
-      validator: function(value) {
-        // Prevent creating team named "Admin"
-        return value.toLowerCase() !== 'admin';
-      },
-      message: 'Team name "Admin" is reserved for super users only'
+      isNotAdmin(value) {
+        if (value.toLowerCase() === 'admin') {
+          throw new Error('Team name "Admin" is reserved for super users only');
+        }
+      }
     }
   },
   hr_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'HR is required']
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
   lead_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'Team lead is required']
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
-  members: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
   pinned: {
-    type: Boolean,
-    default: false
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   },
   priority: {
-    type: Number,
-    default: 0
+    type: DataTypes.INTEGER,
+    defaultValue: 0
   },
-  // WORKSPACE SUPPORT: All teams belong to a workspace
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: true,
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    },
     index: true
   },
-  created_at: {
-    type: Date,
-    default: Date.now
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
+}, {
+  tableName: 'Teams',
+  timestamps: false,
+  underscored: false,
+  indexes: [
+    { fields: ['workspaceId', 'name'] },
+    { fields: ['workspaceId', 'lead_id'] }
+  ]
 });
 
-// WORKSPACE SUPPORT: Indexes for workspace-scoped queries
-teamSchema.index({ workspaceId: 1, name: 1 });
-teamSchema.index({ workspaceId: 1, lead_id: 1 });
-
-export default mongoose.model('Team', teamSchema);
+export default Team;

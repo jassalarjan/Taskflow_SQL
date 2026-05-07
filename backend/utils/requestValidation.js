@@ -1,9 +1,8 @@
-import mongoose from 'mongoose';
-
-const OBJECT_ID_PATTERN = /^[0-9a-fA-F]{24}$/;
+// UUID validation pattern (standard RFC 4122 UUID)
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const isValidObjectIdString = (value) =>
-  typeof value === 'string' && OBJECT_ID_PATTERN.test(value) && mongoose.Types.ObjectId.isValid(value);
+  typeof value === 'string' && UUID_PATTERN.test(value);
 
 export const requireObjectId = (value, fieldName) => {
   if (!isValidObjectIdString(value)) {

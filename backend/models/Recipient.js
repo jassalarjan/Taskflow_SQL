@@ -1,111 +1,86 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-/**
- * Recipient Model
- * Lightweight abstraction for email recipients
- * Supports both TaskFlow users and external contacts
- */
-const recipientSchema = new mongoose.Schema({
+const Recipient = sequelize.define('Recipient', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   email: {
-    type: String,
-    required: true,
-    lowercase: true,
-    trim: true
+    type: DataTypes.STRING,
+    allowNull: false,
+    lowercase: true
   },
   name: {
-    type: String,
-    required: true,
-    trim: true
+    type: DataTypes.STRING,
+    allowNull: false
   },
   source: {
-    type: String,
-    enum: ['USER', 'EXTERNAL'],
-    required: true,
-    default: 'EXTERNAL'
+    type: DataTypes.ENUM('USER', 'EXTERNAL'),
+    defaultValue: 'EXTERNAL'
   },
   linkedUserId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    }
   },
-  // Additional metadata for external recipients
   metadata: {
-    phone: String,
-    company: String,
-    position: String,
-    tags: [String]
+    type: DataTypes.JSON,
+    defaultValue: {
+      phone: null,
+      company: null,
+      position: null,
+      tags: []
+    }
   },
-  // Email preferences
   preferences: {
-    unsubscribe: {
-      type: Boolean,
-      default: false
-    },
-    categories: [{
-      type: String,
-      enum: ['hiring', 'interview', 'onboarding', 'engagement', 'exit', 'system']
-    }]
+    type: DataTypes.JSON,
+    defaultValue: {
+      unsubscribe: false,
+      categories: []
+    }
   },
-  // Tracking
   emailCount: {
-    type: Number,
-    default: 0
+    type: DataTypes.INTEGER,
+    defaultValue: 0
   },
   lastEmailSent: {
-    type: Date,
-    default: null
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
 }, {
-  timestamps: true
+  tableName: 'Recipients',
+  timestamps: true,
+  underscored: false,
+  indexes: [
+    { fields: ['email', 'workspaceId'], unique: true },
+    { fields: ['linkedUserId'] },
+    { fields: ['source', 'workspaceId'] }
+  ]
 });
 
-// Indexes
-recipientSchema.index({ email: 1, workspaceId: 1 }, { unique: true });
-recipientSchema.index({ linkedUserId: 1 });
-recipientSchema.index({ source: 1, workspaceId: 1 });
-recipientSchema.index({ 'preferences.unsubscribe': 1 });
-
-/**
- * Static method to create or update recipient
- * @param {Object} data - Recipient data
- * @returns {Object} Created/updated recipient
- */
-recipientSchema.statics.createOrUpdate = async function(data) {
-  const { email, workspaceId, ...updateData } = data;
-
-  return await this.findOneAndUpdate(
-    { email, workspaceId },
-    { ...updateData, email, workspaceId },
-    {
-      new: true,
-      upsert: true,
-      setDefaultsOnInsert: true
-    }
-  );
-};
-
-/**
- * Check if recipient can receive emails
- * @returns {boolean}
- */
-recipientSchema.methods.canReceiveEmails = function() {
+Recipient.prototype.canReceiveEmails = function() {
   return !this.preferences.unsubscribe;
 };
-
-/**
- * Increment email count and update last sent
- */
-recipientSchema.methods.recordEmailSent = function() {
-  this.emailCount += 1;
-  this.lastEmailSent = new Date();
-  return this.save();
-};
-
-const Recipient = mongoose.model('Recipient', recipientSchema);
 
 export default Recipient;

@@ -52,7 +52,7 @@ const blockWindowMs = CONFIG.BLOCK_DURATION_MINUTES * 60 * 1000;
 
 const normalizeState = async (ip) => {
   const now = new Date();
-  let record = await SecurityThrottleState.findOne({ ip });
+  let record = await SecurityThrottleState.findOne({ where: { ip } });
 
   if (!record) {
     record = new SecurityThrottleState({
@@ -114,16 +114,16 @@ export const recordFailedLogin = async (ip, email = null) => {
  * @param {string} ip - Client IP address
  */
 export const clearFailedLoginAttempts = async (ip) => {
-  await SecurityThrottleState.updateOne(
-    { ip },
-    {
-      $set: {
-        attempts: 0,
-        blockedUntil: null,
-        emails: [],
-      },
-    }
-  );
+  const record = await SecurityThrottleState.findOne({ where: { ip } });
+
+  if (!record) {
+    return;
+  }
+
+  record.attempts = 0;
+  record.blockedUntil = null;
+  record.emails = [];
+  await record.save();
 };
 
 /**
@@ -133,12 +133,8 @@ export const clearFailedLoginAttempts = async (ip) => {
  */
 export const isIPBlocked = async (ip) => {
   const { now, record } = await normalizeState(ip);
-  if (!record._id) {
+  if (!record || !record.id) {
     return false;
-  }
-
-  if (record.isModified()) {
-    await record.save();
   }
 
   return Boolean(record.blockedUntil && now < new Date(record.blockedUntil));
@@ -152,17 +148,13 @@ export const isIPBlocked = async (ip) => {
 export const getIPBlockStatus = async (ip) => {
   const { now, record } = await normalizeState(ip);
 
-  if (!record._id) {
+  if (!record || !record.id) {
     return {
       isBlocked: false,
       attempts: 0,
       remainingAttempts: CONFIG.MAX_FAILED_ATTEMPTS,
       blockedUntil: null
     };
-  }
-
-  if (record.isModified()) {
-    await record.save();
   }
 
   const isBlocked = record.blockedUntil && now < new Date(record.blockedUntil);

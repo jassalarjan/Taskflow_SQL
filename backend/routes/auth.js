@@ -1,6 +1,6 @@
 ﻿import express from 'express';
-import mongoose from 'mongoose';
 import crypto from 'crypto';
+import { randomUUID } from 'crypto';
 import { body, validationResult } from 'express-validator';
 import User from '../models/User.js';
 import Workspace from '../models/Workspace.js';
@@ -86,7 +86,7 @@ router.post('/register-community', [
     }
 
     // Create temporary user ID for workspace creation
-    const tempUserId = new mongoose.Types.ObjectId();
+    const tempUserId = randomUUID();
 
     // Create COMMUNITY workspace
     const workspace = new Workspace({
@@ -189,11 +189,10 @@ router.post('/login', validateLogin, async (req, res) => {
       });
     }
 
-    // Find user with team and workspace populated
-    const user = await User.findOne({ email })
-      .populate('team_id', 'name description')
-      .populate('teams', 'name')
-      .populate('workspaceId', 'name type settings');
+    // Find user by email using Sequelize
+    const user = await User.findOne({
+      where: { email }
+    });
     
     if (!user) {
       // Record failed attempt even if user doesn't exist (prevent email enumeration timing)
@@ -207,7 +206,7 @@ router.post('/login', validateLogin, async (req, res) => {
       securityLogger('inactive_account_login_attempt', {
         ip: clientIP,
         email,
-        userId: user._id
+        userId: user.id
       });
       return res.status(403).json({
         message: 'Your account has been deactivated. Please contact your administrator for assistance.',
@@ -227,18 +226,8 @@ router.post('/login', validateLogin, async (req, res) => {
 
     // SYSTEM ADMIN: Admins and community_admins can have special handling
     // Regular users must have workspace
-    let activeWorkspaceId = user.currentWorkspaceId || user.workspaceId;
+    let activeWorkspaceId = user.currentWorkspaceId || user.workspaceId || null;
     let activeWorkspace = null;
-    
-    // Multi-workspace support: Check user's workspaces array
-    if (!activeWorkspaceId && user.workspaces && user.workspaces.length > 0) {
-      const firstActive = user.workspaces.find(ws => ws.isActive);
-      if (firstActive) {
-        activeWorkspaceId = firstActive.workspaceId;
-        user.currentWorkspaceId = activeWorkspaceId;
-        await user.save();
-      }
-    }
     
     if (!activeWorkspaceId) {
       if (user.role !== 'admin' && user.role !== 'community_admin') {
@@ -249,18 +238,13 @@ router.post('/login', validateLogin, async (req, res) => {
       // Admin without workspace = system admin, continue login
       // Community admin without workspace = edge case, allow login
     } else {
-      // Populate workspace if it's an ObjectId
-      if (!user.workspaceId || typeof user.workspaceId === 'string' || user.workspaceId?._id?.toString() !== activeWorkspaceId.toString()) {
-        activeWorkspace = await Workspace.findById(activeWorkspaceId);
-      } else {
-        activeWorkspace = user.workspaceId;
-      }
+      activeWorkspace = await Workspace.findByPk(activeWorkspaceId);
       
       // Check if workspace is active (default to true if not set)
       if (activeWorkspace && activeWorkspace.isActive === false) {
         return res.status(403).json({ 
           message: 'Your workspace has been deactivated. Please contact support.',
-          workspaceId: activeWorkspace._id,
+          workspaceId: activeWorkspace.id,
           workspaceName: activeWorkspace.name
         });
       }
@@ -271,39 +255,25 @@ router.post('/login', validateLogin, async (req, res) => {
     
     // ADMIN/SUPER ADMIN: Get all workspaces
     if (user.role === 'admin') {
-      const allAvailableWorkspaces = await Workspace.find({ isActive: true })
-        .select('name type settings.features')
-        .lean();
-      
+      const allAvailableWorkspaces = await Workspace.findAll({
+        where: { isActive: true },
+        attributes: ['id', 'name', 'type', 'settings'],
+        raw: true
+      });
+
       for (const wsData of allAvailableWorkspaces) {
         allWorkspaces.push({
-          id: wsData._id,
+          id: wsData.id,
           name: wsData.name,
           type: wsData.type,
           role: 'admin', // Admin role in all workspaces
           features: wsData.settings?.features || {}
         });
       }
-    } else if (user.workspaces && user.workspaces.length > 0) {
-      // Regular users: Get their assigned workspaces
-      for (const ws of user.workspaces) {
-        if (ws.isActive) {
-          const wsData = await Workspace.findById(ws.workspaceId).select('name type settings.features').lean();
-          if (wsData) {
-            allWorkspaces.push({
-              id: wsData._id,
-              name: wsData.name,
-              type: wsData.type,
-              role: ws.role,
-              features: wsData.settings?.features || {}
-            });
-          }
-        }
-      }
     } else if (activeWorkspace) {
       // Legacy single workspace support
       allWorkspaces.push({
-        id: activeWorkspace._id,
+        id: activeWorkspace.id,
         name: activeWorkspace.name,
         type: activeWorkspace.type,
         role: user.role,
@@ -341,8 +311,8 @@ router.post('/login', validateLogin, async (req, res) => {
     // Generate tokens with IP for tracking
     // If remember me, set refresh token to selected timeout, else default 24h
     const refreshExpiry = rememberMe ? `${validTimeout}h` : undefined;
-    const accessToken = generateAccessToken(user._id, user.role, clientIP);
-    const refreshToken = generateRefreshToken(user._id, clientIP, refreshExpiry);
+    const accessToken = generateAccessToken(user.id, user.role, clientIP);
+    const refreshToken = generateRefreshToken(user.id, clientIP, refreshExpiry);
 
     // Log login event
     const user_ip = getClientIP(req);
@@ -367,8 +337,8 @@ router.post('/login', validateLogin, async (req, res) => {
     const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
     const cookieOptions = {
       httpOnly: true,
-      secure: true, // Always true for cross-site cookies to work
-      sameSite: 'none',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       path: '/'
     };
@@ -379,7 +349,7 @@ router.post('/login', validateLogin, async (req, res) => {
     res.json({
       message: 'Login successful',
       user: {
-        id: user._id,
+        id: user.id,
         full_name: user.full_name,
         email: user.email,
         role: user.role,
@@ -388,10 +358,10 @@ router.post('/login', validateLogin, async (req, res) => {
         workspaceId: activeWorkspaceId || null,
         currentWorkspaceId: activeWorkspaceId || null,
         isSystemAdmin: !activeWorkspaceId && user.role === 'admin',
-        joinedAt: user.joinedAt
+        joinedAt: user.createdAt
       },
       workspace: activeWorkspace ? {
-        id: activeWorkspace._id,
+        id: activeWorkspace.id,
         name: activeWorkspace.name,
         type: activeWorkspace.type,
         features: activeWorkspace.settings?.features || {},

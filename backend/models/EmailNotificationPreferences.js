@@ -1,64 +1,82 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const emailNotificationPreferencesSchema = new mongoose.Schema({
+const EmailNotificationPreferences = sequelize.define('EmailNotificationPreferences', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    unique: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    }
   },
   dueDateReminders: {
-    enabled: { type: Boolean, default: true },
-    tomorrowReminders: { type: Boolean, default: true },
-    todayReminders: { type: Boolean, default: true },
-    overdueEscalation: { type: Boolean, default: true }
+    type: DataTypes.JSON,
+    defaultValue: {
+      enabled: true,
+      tomorrowReminders: true,
+      todayReminders: true,
+      overdueEscalation: true
+    }
   },
   taskNotifications: {
-    enabled: { type: Boolean, default: true },
-    assignmentNotifications: { type: Boolean, default: true },
-    statusUpdateNotifications: { type: Boolean, default: true },
-    commentNotifications: { type: Boolean, default: true }
+    type: DataTypes.JSON,
+    defaultValue: {
+      enabled: true,
+      assignmentNotifications: true,
+      statusUpdateNotifications: true,
+      commentNotifications: true
+    }
   },
   adminReports: {
-    enabled: { type: Boolean, default: false }, // Only for admins
-    dailyReports: { type: Boolean, default: true },
-    weeklyReports: { type: Boolean, default: true }
+    type: DataTypes.JSON,
+    defaultValue: {
+      enabled: false,
+      dailyReports: true,
+      weeklyReports: true
+    }
   },
   emailFrequency: {
-    type: String,
-    enum: ['immediate', 'daily', 'weekly'],
-    default: 'immediate'
+    type: DataTypes.ENUM('immediate', 'daily', 'weekly'),
+    defaultValue: 'immediate'
   },
   quietHours: {
-    enabled: { type: Boolean, default: false },
-    startTime: { type: String, default: '22:00' }, // 24-hour format
-    endTime: { type: String, default: '08:00' }
+    type: DataTypes.JSON,
+    defaultValue: {
+      enabled: false,
+      startTime: '22:00',
+      endTime: '08:00'
+    }
   },
   created_at: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   },
   updated_at: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
+}, {
+  tableName: 'EmailNotificationPreferences',
+  timestamps: false,
+  underscored: false,
+  indexes: [
+    { fields: ['userId', 'workspaceId'], unique: true },
+    { fields: ['workspaceId'] }
+  ]
 });
-
-// Index for efficient queries
-emailNotificationPreferencesSchema.index({ userId: 1, workspaceId: 1 });
-emailNotificationPreferencesSchema.index({ workspaceId: 1 });
-
-// Update timestamp on save
-emailNotificationPreferencesSchema.pre('save', function(next) {
-  this.updated_at = Date.now();
-  next();
-});
-
-const EmailNotificationPreferences = mongoose.model('EmailNotificationPreferences', emailNotificationPreferencesSchema);
 
 export default EmailNotificationPreferences;

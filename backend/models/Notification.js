@@ -1,48 +1,65 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const notificationSchema = new mongoose.Schema({
+const Notification = sequelize.define('Notification', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   user_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'User ID is required']
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
   type: {
-    type: String,
-    enum: ['task_assigned', 'task_updated', 'task_completed', 'task_overdue', 'comment_added', 'status_changed', 'task_due'],
-    required: true
+    type: DataTypes.ENUM('task_assigned', 'task_updated', 'task_completed', 'task_overdue', 'comment_added', 'status_changed', 'task_due'),
+    allowNull: false
   },
   message: {
-    type: String,
-    required: true
+    type: DataTypes.TEXT,
+    allowNull: false
   },
   task_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Task',
-    default: null
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Tasks',
+      key: 'id'
+    }
   },
   payload: {
-    type: Object,
-    default: {}
+    type: DataTypes.JSON,
+    defaultValue: {}
   },
-  // WORKSPACE SUPPORT: All notifications belong to a workspace
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: true,
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    },
     index: true
   },
   read_at: {
-    type: Date,
-    default: null
+    type: DataTypes.DATE,
+    allowNull: true
   },
   created_at: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
+}, {
+  tableName: 'Notifications',
+  timestamps: false,
+  underscored: false,
+  indexes: [
+    { fields: ['workspaceId', 'user_id', 'read_at'] },
+    { fields: ['workspaceId', 'created_at'] }
+  ]
 });
 
-// WORKSPACE SUPPORT: Indexes for workspace-scoped queries
-notificationSchema.index({ workspaceId: 1, user_id: 1, read_at: 1 });
-notificationSchema.index({ workspaceId: 1, created_at: -1 });
-
-export default mongoose.model('Notification', notificationSchema);
+export default Notification;

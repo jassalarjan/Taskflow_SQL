@@ -1,4 +1,6 @@
-﻿import ChangeLog from '../models/ChangeLog.js';
+﻿import { Op } from 'sequelize';
+import ChangeLog from '../models/ChangeLog.js';
+import User from '../models/User.js';
 
 /**
  * Create a change log entry
@@ -6,14 +8,12 @@
  */
 export const logChange = async (params) => {
   try {
-    // Handle both parameter patterns
     let logData = {};
 
     if (params.event_type) {
-      // Direct event_type pattern (used in auth.js, users.js, etc.)
       logData = {
         event_type: params.event_type,
-        user_id: params.user?._id,
+        user_id: params.user?.id || params.user?.userId || null,
         user_email: params.user?.email,
         user_name: params.user?.full_name,
         user_role: params.user?.role,
@@ -28,10 +28,8 @@ export const logChange = async (params) => {
         workspaceId: params.workspaceId
       };
     } else {
-      // Alternative pattern (used in attendance.js, leaves.js, etc.)
       const { userId, workspaceId, action, entity, entityId, details, ipAddress } = params;
 
-      // Map entity to event_type
       const eventTypeMap = {
         attendance: 'user_action',
         leave_request: 'leave_action',
@@ -57,12 +55,8 @@ export const logChange = async (params) => {
       };
     }
 
-    const logEntry = new ChangeLog(logData);
-
-    await logEntry.save();
-    return logEntry;
+    return await ChangeLog.create(logData);
   } catch (error) {
-    // Don't throw error to prevent disrupting main operations
     return null;
   }
 };
@@ -84,55 +78,57 @@ export const getChangeLogs = async ({
   includeAllWorkspaces = false  // For system admins to view all logs
 }) => {
   try {
-    // WORKSPACE SUPPORT: Start with workspace filter (unless viewing all)
-    const query = {};
+    const where = {};
     
     if (!includeAllWorkspaces) {
-      query.workspaceId = workspaceId;
+      where.workspaceId = workspaceId;
     }
 
     if (event_type) {
-      query.event_type = event_type;
+      where.event_type = event_type;
     }
 
     if (user_id) {
-      query.user_id = user_id;
+      where.user_id = user_id;
     }
 
     if (target_type) {
-      query.target_type = target_type;
+      where.target_type = target_type;
     }
 
     if (start_date || end_date) {
-      query.created_at = {};
+      where.created_at = {};
       if (start_date) {
-        query.created_at.$gte = new Date(start_date);
+        where.created_at[Op.gte] = new Date(start_date);
       }
       if (end_date) {
-        query.created_at.$lte = new Date(end_date);
+        where.created_at[Op.lte] = new Date(end_date);
       }
     }
 
     if (search) {
-      query.$or = [
-        { description: { $regex: search, $options: 'i' } },
-        { action: { $regex: search, $options: 'i' } },
-        { user_email: { $regex: search, $options: 'i' } },
-        { user_name: { $regex: search, $options: 'i' } },
-        { target_name: { $regex: search, $options: 'i' } }
+      where[Op.or] = [
+        { description: { [Op.like]: `%${search}%` } },
+        { action: { [Op.like]: `%${search}%` } },
+        { user_email: { [Op.like]: `%${search}%` } },
+        { user_name: { [Op.like]: `%${search}%` } },
+        { target_name: { [Op.like]: `%${search}%` } }
       ];
     }
 
-    const skip = (page - 1) * limit;
-
     const [logs, total] = await Promise.all([
-      ChangeLog.find(query)
-        .sort({ created_at: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate('user_id', 'full_name email role')
-        .lean(),
-      ChangeLog.countDocuments(query)
+      ChangeLog.findAll({
+        where,
+        order: [['created_at', 'DESC']],
+        offset: (page - 1) * limit,
+        limit,
+        include: [{
+          model: User,
+          as: 'user',
+          attributes: ['id', 'full_name', 'email', 'role']
+        }]
+      }),
+      ChangeLog.count({ where })
     ]);
 
     return {
@@ -152,53 +148,47 @@ export const getChangeLogs = async ({
  */
 export const getChangeLogStats = async ({ start_date, end_date }) => {
   try {
-    const query = {};
+    const where = {};
     
     if (start_date || end_date) {
-      query.created_at = {};
+      where.created_at = {};
       if (start_date) {
-        query.created_at.$gte = new Date(start_date);
+        where.created_at[Op.gte] = new Date(start_date);
       }
       if (end_date) {
-        query.created_at.$lte = new Date(end_date);
+        where.created_at[Op.lte] = new Date(end_date);
       }
     }
 
-    const stats = await ChangeLog.aggregate([
-      { $match: query },
-      {
-        $group: {
-          _id: '$event_type',
-          count: { $sum: 1 }
-        }
-      },
-      {
-        $sort: { count: -1 }
-      }
-    ]);
+    const allLogs = await ChangeLog.findAll({ where, raw: true });
 
-    const userActivity = await ChangeLog.aggregate([
-      { $match: query },
-      {
-        $group: {
-          _id: '$user_id',
-          user_name: { $first: '$user_name' },
-          user_email: { $first: '$user_email' },
-          count: { $sum: 1 }
-        }
-      },
-      {
-        $sort: { count: -1 }
-      },
-      {
-        $limit: 10
-      }
-    ]);
+    const statsMap = new Map();
+    const userMap = new Map();
 
-    const total = await ChangeLog.countDocuments(query);
+    for (const log of allLogs) {
+      statsMap.set(log.event_type, (statsMap.get(log.event_type) || 0) + 1);
+
+      const userKey = log.user_id || `${log.user_email || ''}-${log.user_name || ''}`;
+      const existing = userMap.get(userKey) || {
+        _id: log.user_id,
+        user_name: log.user_name,
+        user_email: log.user_email,
+        count: 0
+      };
+      existing.count += 1;
+      userMap.set(userKey, existing);
+    }
+
+    const stats = Array.from(statsMap.entries())
+      .map(([event_type, count]) => ({ _id: event_type, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const userActivity = Array.from(userMap.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
 
     return {
-      total,
+      total: allLogs.length,
       by_event_type: stats,
       top_users: userActivity
     };
@@ -212,10 +202,15 @@ export const getChangeLogStats = async ({ start_date, end_date }) => {
  */
 export const exportChangeLogs = async (query) => {
   try {
-    const logs = await ChangeLog.find(query)
-      .sort({ created_at: -1 })
-      .populate('user_id', 'full_name email role')
-      .lean();
+    const logs = await ChangeLog.findAll({
+      where: query,
+      order: [['created_at', 'DESC']],
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['id', 'full_name', 'email', 'role']
+      }]
+    });
 
     return logs;
   } catch (error) {

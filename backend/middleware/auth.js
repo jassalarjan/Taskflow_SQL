@@ -1,7 +1,6 @@
 import { verifyAccessToken, isTokenBlacklisted } from '../utils/jwt.js';
 import User from '../models/User.js';
 import { getClientIP, securityLogger } from '../utils/security.js';
-import mongoose from 'mongoose';
 
 export const authenticate = async (req, res, next) => {
   try {

@@ -1,201 +1,162 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-/**
- * Workspace Model
- * 
- * Represents a workspace that can be either CORE (enterprise) or COMMUNITY (free tier)
- * Each workspace has isolated data and specific feature limitations
- */
-const workspaceSchema = new mongoose.Schema({
+const Workspace = sequelize.define('Workspace', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   name: {
-    type: String,
-    required: true,
-    trim: true,
-    maxlength: 100,
+    type: DataTypes.STRING(100),
+    allowNull: false
   },
   type: {
-    type: String,
-    enum: ['CORE', 'COMMUNITY'],
-    required: true,
-    default: 'COMMUNITY',
+    type: DataTypes.ENUM('CORE', 'COMMUNITY'),
+    defaultValue: 'COMMUNITY',
+    allowNull: false
   },
   owner: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: false,
-    default: null,
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
   settings: {
-    // General workspace settings
-    allowPublicRegistration: {
-      type: Boolean,
-      default: false,
-    },
-    sessionTimeout: {
-      type: Number,
-      default: 30, // minutes
-    },
-    // Email settings
-    enableEmailNotifications: {
-      type: Boolean,
-      default: true,
-    },
-    // Feature flags
-    features: {
-      bulkUserImport: {
-        type: Boolean,
-        default: false, // Only CORE workspaces get this
-      },
-      auditLogs: {
-        type: Boolean,
-        default: false, // Only CORE workspaces get this
-      },
-      advancedAutomation: {
-        type: Boolean,
-        default: false, // Only CORE workspaces get this
-      },
-      customBranding: {
-        type: Boolean,
-        default: false,
-      },
-    },
+    type: DataTypes.JSON,
+    defaultValue: {
+      allowPublicRegistration: false,
+      sessionTimeout: 30,
+      enableEmailNotifications: true,
+      features: {
+        bulkUserImport: false,
+        auditLogs: false,
+        advancedAutomation: false,
+        customBranding: false
+      }
+    }
   },
   limits: {
-    // Usage limits for COMMUNITY workspaces
-    maxUsers: {
-      type: Number,
-      default: null, // null = unlimited (for CORE)
-    },
-    maxTasks: {
-      type: Number,
-      default: null, // null = unlimited (for CORE)
-    },
-    maxTeams: {
-      type: Number,
-      default: null, // null = unlimited (for CORE)
-    },
-    maxStorageGB: {
-      type: Number,
-      default: null, // null = unlimited (for CORE)
-    },
+    type: DataTypes.JSON,
+    defaultValue: {
+      maxUsers: null,
+      maxTasks: null,
+      maxTeams: null,
+      maxStorageGB: null
+    }
   },
-  // Current usage stats (for limit enforcement)
   usage: {
-    userCount: {
-      type: Number,
-      default: 0,
-    },
-    taskCount: {
-      type: Number,
-      default: 0,
-    },
-    teamCount: {
-      type: Number,
-      default: 0,
-    },
+    type: DataTypes.JSON,
+    defaultValue: {
+      userCount: 0,
+      taskCount: 0,
+      teamCount: 0
+    }
   },
-  // Status
-  isActive: {
-    type: Boolean,
-    default: true,
-  },
-  // Trial/subscription info (for future use)
   subscription: {
-    planType: {
-      type: String,
-      enum: ['TRIAL', 'FREE', 'PRO', 'ENTERPRISE'],
-      default: 'FREE',
-    },
-    startDate: {
-      type: Date,
-      default: Date.now,
-    },
-    endDate: {
-      type: Date,
-      default: null, // null = no expiry
-    },
+    type: DataTypes.JSON,
+    defaultValue: {
+      planType: 'FREE'
+    }
   },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  }
 }, {
+  tableName: 'Workspaces',
   timestamps: true,
-});
-
-// Index for efficient queries
-workspaceSchema.index({ type: 1, isActive: 1 });
-workspaceSchema.index({ owner: 1 });
-
-// Pre-save hook to set default features based on workspace type
-workspaceSchema.pre('save', function(next) {
-  if (this.isNew || this.isModified('type')) {
-    if (this.type === 'CORE') {
-      // CORE workspaces get all features
-      this.settings.features.bulkUserImport = true;
-      this.settings.features.auditLogs = true;
-      this.settings.features.advancedAutomation = true;
-      this.settings.features.customBranding = true;
-      
-      // No limits for CORE workspaces
-      this.limits.maxUsers = null;
-      this.limits.maxTasks = null;
-      this.limits.maxTeams = null;
-      this.limits.maxStorageGB = null;
-      
-      this.subscription.planType = 'ENTERPRISE';
-    } else if (this.type === 'COMMUNITY') {
-      // COMMUNITY workspaces have limited features
-      this.settings.features.bulkUserImport = false;
-      this.settings.features.auditLogs = false;
-      this.settings.features.advancedAutomation = false;
-      this.settings.features.customBranding = false;
-      
-      // Set limits for COMMUNITY workspaces
-      this.limits.maxUsers = 10;
-      this.limits.maxTasks = 100;
-      this.limits.maxTeams = 3;
-      this.limits.maxStorageGB = 1;
-      
-      this.subscription.planType = 'FREE';
+  underscored: false,
+  hooks: {
+    beforeCreate: (workspace) => {
+      setWorkspaceDefaults(workspace);
+    },
+    beforeUpdate: (workspace) => {
+      setWorkspaceDefaults(workspace);
     }
   }
-  next();
 });
 
+// Helper function to set defaults based on workspace type
+const setWorkspaceDefaults = (workspace) => {
+  if (workspace.type === 'CORE') {
+    workspace.settings.features = {
+      bulkUserImport: true,
+      auditLogs: true,
+      advancedAutomation: true,
+      customBranding: true
+    };
+    workspace.limits = {
+      maxUsers: null,
+      maxTasks: null,
+      maxTeams: null,
+      maxStorageGB: null
+    };
+    workspace.subscription = { planType: 'ENTERPRISE' };
+  } else if (workspace.type === 'COMMUNITY') {
+    workspace.settings.features = {
+      bulkUserImport: false,
+      auditLogs: false,
+      advancedAutomation: false,
+      customBranding: false
+    };
+    workspace.limits = {
+      maxUsers: 10,
+      maxTasks: 100,
+      maxTeams: 3,
+      maxStorageGB: 1
+    };
+    workspace.subscription = { planType: 'FREE' };
+  }
+};
+
 // Instance methods
-workspaceSchema.methods.canAddUser = function() {
+Workspace.prototype.canAddUser = function() {
   if (this.type === 'CORE' || this.limits.maxUsers === null) {
     return true;
   }
   return this.usage.userCount < this.limits.maxUsers;
 };
 
-workspaceSchema.methods.canAddTask = function() {
+Workspace.prototype.canAddTask = function() {
   if (this.type === 'CORE' || this.limits.maxTasks === null) {
     return true;
   }
   return this.usage.taskCount < this.limits.maxTasks;
 };
 
-workspaceSchema.methods.canAddTeam = function() {
+Workspace.prototype.canAddTeam = function() {
   if (this.type === 'CORE' || this.limits.maxTeams === null) {
     return true;
   }
   return this.usage.teamCount < this.limits.maxTeams;
 };
 
-workspaceSchema.methods.hasFeature = function(featureName) {
+Workspace.prototype.hasFeature = function(featureName) {
   return this.settings.features[featureName] === true;
 };
 
-workspaceSchema.methods.isCoreWorkspace = function() {
+Workspace.prototype.isCoreWorkspace = function() {
   return this.type === 'CORE';
 };
 
-workspaceSchema.methods.isCommunityWorkspace = function() {
+Workspace.prototype.isCommunityWorkspace = function() {
   return this.type === 'COMMUNITY';
 };
 
 // Static methods
-workspaceSchema.statics.getCoreWorkspace = async function() {
-  return this.findOne({ type: 'CORE', isActive: true });
+Workspace.getCoreWorkspace = async function() {
+  return this.findOne({ where: { type: 'CORE', isActive: true } });
 };
 
-export default mongoose.model('Workspace', workspaceSchema);
+export default Workspace;

@@ -1,41 +1,55 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const holidaySchema = new mongoose.Schema({
+const Holiday = sequelize.define('Holiday', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: true,
-    index: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    }
   },
   name: {
-    type: String,
-    required: true,
-    trim: true
+    type: DataTypes.STRING,
+    allowNull: false
   },
   date: {
-    type: Date,
-    required: true,
-    index: true
+    type: DataTypes.DATEONLY,
+    allowNull: false
   },
   isRecurring: {
-    type: Boolean,
-    default: false
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   },
   description: {
-    type: String,
-    default: ''
+    type: DataTypes.TEXT,
+    defaultValue: ''
   },
   isActive: {
-    type: Boolean,
-    default: true
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
 }, {
-  timestamps: true
+  tableName: 'Holidays',
+  timestamps: true,
+  underscored: false,
+  indexes: [
+    { fields: ['workspaceId', 'date'] }
+  ]
 });
-
-// Compound index for workspace and date queries
-holidaySchema.index({ workspaceId: 1, date: 1 });
-
-const Holiday = mongoose.model('Holiday', holidaySchema);
 
 export default Holiday;

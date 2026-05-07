@@ -1,25 +1,40 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const commentSchema = new mongoose.Schema({
+const Comment = sequelize.define('Comment', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   task_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Task',
-    required: [true, 'Task ID is required']
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Tasks',
+      key: 'id'
+    }
   },
   author_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'Author ID is required']
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
   content: {
-    type: String,
-    required: [true, 'Comment content is required'],
-    trim: true
+    type: DataTypes.TEXT,
+    allowNull: false
   },
   created_at: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
+}, {
+  tableName: 'Comments',
+  timestamps: false,
+  underscored: false
 });
 
-export default mongoose.model('Comment', commentSchema);
+export default Comment;

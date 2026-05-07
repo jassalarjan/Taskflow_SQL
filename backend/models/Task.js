@@ -1,76 +1,79 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const taskSchema = new mongoose.Schema({
+const Task = sequelize.define('Task', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   title: {
-    type: String,
-    required: [true, 'Task title is required'],
-    trim: true
+    type: DataTypes.STRING,
+    allowNull: false
   },
   description: {
-    type: String,
-    default: ''
+    type: DataTypes.TEXT,
+    defaultValue: ''
   },
   status: {
-    type: String,
-    enum: ['todo', 'in_progress', 'review', 'done', 'archived'],
-    default: 'todo'
+    type: DataTypes.ENUM('todo', 'in_progress', 'review', 'done', 'archived'),
+    defaultValue: 'todo'
   },
   priority: {
-    type: String,
-    enum: ['low', 'medium', 'high', 'urgent'],
-    default: 'medium'
+    type: DataTypes.ENUM('low', 'medium', 'high', 'urgent'),
+    defaultValue: 'medium'
   },
   created_by: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
-  assigned_to: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
   team_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Team',
-    default: null
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Teams',
+      key: 'id'
+    }
   },
-  // WORKSPACE SUPPORT: All tasks belong to a workspace (null for system admins)
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: false,
-    default: null,
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    },
     index: true
   },
   due_date: {
-    type: Date,
-    required: [true, 'Due date is required']
+    type: DataTypes.DATE,
+    allowNull: false
   },
   progress: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 100
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    validate: { min: 0, max: 100 }
   },
-  created_at: {
-    type: Date,
-    default: Date.now
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   },
-  updated_at: {
-    type: Date,
-    default: Date.now
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
+}, {
+  tableName: 'Tasks',
+  timestamps: true,
+  underscored: false,
+  indexes: [
+    { fields: ['workspaceId', 'status'] },
+    { fields: ['workspaceId', 'team_id'] },
+    { fields: ['workspaceId', 'due_date'] }
+  ]
 });
 
-// WORKSPACE SUPPORT: Indexes for workspace-scoped queries
-taskSchema.index({ workspaceId: 1, status: 1 });
-taskSchema.index({ workspaceId: 1, assigned_to: 1 });
-taskSchema.index({ workspaceId: 1, team_id: 1 });
-taskSchema.index({ workspaceId: 1, due_date: 1 });
-
-taskSchema.pre('save', function(next) {
-  this.updated_at = Date.now();
-  next();
-});
-
-export default mongoose.model('Task', taskSchema);
+export default Task;

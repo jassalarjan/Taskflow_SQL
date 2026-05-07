@@ -1,51 +1,50 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const suspiciousActivitySchema = new mongoose.Schema({
-  type: {
-    type: String,
-    required: true,
-    trim: true,
+const SecurityThrottleState = sequelize.define('SecurityThrottleState', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
   },
-  timestamp: {
-    type: Date,
-    default: Date.now,
-  },
-  details: {
-    type: mongoose.Schema.Types.Mixed,
-    default: {},
-  },
-}, { _id: false });
-
-const securityThrottleStateSchema = new mongoose.Schema({
   ip: {
-    type: String,
-    required: true,
+    type: DataTypes.STRING(45),
+    allowNull: false,
     unique: true,
-    index: true,
-    trim: true,
+    index: true
   },
   attempts: {
-    type: Number,
-    default: 0,
+    type: DataTypes.INTEGER,
+    defaultValue: 0
   },
   blockedUntil: {
-    type: Date,
-    default: null,
+    type: DataTypes.DATE,
+    allowNull: true
   },
   lastAttempt: {
-    type: Date,
-    default: null,
+    type: DataTypes.DATE,
+    allowNull: true
   },
   emails: {
-    type: [String],
-    default: [],
+    type: DataTypes.JSON,
+    defaultValue: []
   },
   suspiciousActivities: {
-    type: [suspiciousActivitySchema],
-    default: [],
+    type: DataTypes.JSON,
+    defaultValue: []
   },
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  }
 }, {
+  tableName: 'SecurityThrottleStates',
   timestamps: true,
+  underscored: false
 });
 
-export default mongoose.model('SecurityThrottleState', securityThrottleStateSchema);
+export default SecurityThrottleState;

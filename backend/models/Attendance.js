@@ -1,79 +1,99 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const attendanceSchema = new mongoose.Schema({
+const Attendance = sequelize.define('Attendance', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: true,
-    index: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    }
   },
   date: {
-    type: Date,
-    required: true,
-    index: true
+    type: DataTypes.DATEONLY,
+    allowNull: false
   },
   checkIn: {
-    type: Date,
-    default: null
+    type: DataTypes.DATE,
+    allowNull: true
   },
   checkOut: {
-    type: Date,
-    default: null
+    type: DataTypes.DATE,
+    allowNull: true
   },
   status: {
-    type: String,
-    enum: ['present', 'absent', 'half_day', 'leave', 'holiday'],
-    default: 'absent'
+    type: DataTypes.ENUM('present', 'absent', 'half_day', 'leave', 'holiday'),
+    defaultValue: 'absent'
   },
   workingHours: {
-    type: Number,
-    default: 0
+    type: DataTypes.DECIMAL(5, 2),
+    defaultValue: 0
   },
   notes: {
-    type: String,
-    default: ''
+    type: DataTypes.TEXT,
+    defaultValue: ''
   },
   isOverride: {
-    type: Boolean,
-    default: false
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   },
   overrideBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
 }, {
-  timestamps: true
+  tableName: 'Attendances',
+  timestamps: true,
+  underscored: false,
+  indexes: [
+    { fields: ['userId', 'date'], unique: true },
+    { fields: ['workspaceId', 'date'] }
+  ],
+  hooks: {
+    beforeCreate: calculateWorkingHours,
+    beforeUpdate: calculateWorkingHours
+  }
 });
 
-// Compound index for efficient queries
-attendanceSchema.index({ userId: 1, date: 1 }, { unique: true });
-attendanceSchema.index({ workspaceId: 1, date: 1 });
-
-// Calculate working hours before saving
-attendanceSchema.pre('save', function(next) {
-  if (this.checkIn && this.checkOut) {
-    const hours = (this.checkOut - this.checkIn) / (1000 * 60 * 60);
-    this.workingHours = Math.round(hours * 100) / 100;
+function calculateWorkingHours(attendance) {
+  if (attendance.checkIn && attendance.checkOut) {
+    const hours = (attendance.checkOut - attendance.checkIn) / (1000 * 60 * 60);
+    attendance.workingHours = Math.round(hours * 100) / 100;
     
-    // Auto-determine status based on hours
-    if (!this.isOverride) {
+    if (!attendance.isOverride) {
       if (hours >= 8) {
-        this.status = 'present';
+        attendance.status = 'present';
       } else if (hours >= 4) {
-        this.status = 'half_day';
+        attendance.status = 'half_day';
       }
     }
   }
-  next();
-});
-
-const Attendance = mongoose.model('Attendance', attendanceSchema);
+}
 
 export default Attendance;

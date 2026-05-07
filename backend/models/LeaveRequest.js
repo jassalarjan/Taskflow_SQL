@@ -1,75 +1,96 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const leaveRequestSchema = new mongoose.Schema({
+const LeaveRequest = sequelize.define('LeaveRequest', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: true,
-    index: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    }
   },
   leaveTypeId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'LeaveType',
-    required: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'LeaveTypes',
+      key: 'id'
+    }
   },
   startDate: {
-    type: Date,
-    required: true,
-    index: true
+    type: DataTypes.DATEONLY,
+    allowNull: false
   },
   endDate: {
-    type: Date,
-    required: true
+    type: DataTypes.DATEONLY,
+    allowNull: false
   },
   days: {
-    type: Number,
-    required: true
+    type: DataTypes.DECIMAL(8, 2),
+    allowNull: false
   },
   reason: {
-    type: String,
-    required: true,
-    trim: true
+    type: DataTypes.TEXT,
+    allowNull: false
   },
   status: {
-    type: String,
-    enum: ['pending', 'approved', 'rejected', 'cancelled'],
-    default: 'pending',
-    index: true
+    type: DataTypes.ENUM('pending', 'approved', 'rejected', 'cancelled'),
+    defaultValue: 'pending'
   },
   approvedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    default: null
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
   approvedAt: {
-    type: Date,
-    default: null
+    type: DataTypes.DATE,
+    allowNull: true
   },
   rejectionReason: {
-    type: String,
-    default: ''
+    type: DataTypes.TEXT,
+    defaultValue: ''
   },
   hrNotes: {
-    type: String,
-    default: '',
-    trim: true
+    type: DataTypes.TEXT,
+    defaultValue: ''
   },
-  attachments: [{
-    type: String
-  }]
+  attachments: {
+    type: DataTypes.JSON,
+    defaultValue: []
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  }
 }, {
-  timestamps: true
+  tableName: 'LeaveRequests',
+  timestamps: true,
+  underscored: false,
+  indexes: [
+    { fields: ['workspaceId', 'status', 'startDate'] },
+    { fields: ['userId', 'workspaceId'] }
+  ]
 });
-
-// Indexes for efficient queries
-leaveRequestSchema.index({ workspaceId: 1, status: 1, startDate: -1 });
-
-const LeaveRequest = mongoose.model('LeaveRequest', leaveRequestSchema);
 
 export default LeaveRequest;

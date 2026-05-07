@@ -1,62 +1,77 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const emailTemplateSchema = new mongoose.Schema({
+const EmailTemplate = sequelize.define('EmailTemplate', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    default: null  // null means global template
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    }
   },
   name: {
-    type: String,
-    required: true,
-    trim: true
+    type: DataTypes.STRING,
+    allowNull: false
   },
   code: {
-    type: String,
-    required: true,
+    type: DataTypes.STRING(50),
+    allowNull: false,
     unique: true,
     uppercase: true
   },
   subject: {
-    type: String,
-    required: true
+    type: DataTypes.STRING,
+    allowNull: false
   },
   htmlContent: {
-    type: String,
-    required: true
+    type: DataTypes.TEXT,
+    allowNull: false
   },
-  variables: [{
-    name: String,
-    description: String,
-    example: String
-  }],
+  variables: {
+    type: DataTypes.JSON,
+    defaultValue: []
+  },
   category: {
-    type: String,
-    enum: ['leave', 'attendance', 'system', 'custom', 'hiring', 'interview', 'onboarding', 'engagement', 'exit'],
-    default: 'custom'
+    type: DataTypes.ENUM('leave', 'attendance', 'system', 'custom', 'hiring', 'interview', 'onboarding', 'engagement', 'exit'),
+    defaultValue: 'custom'
   },
   isActive: {
-    type: Boolean,
-    default: true
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   },
-    isPredefined: {
-      type: Boolean,
-      default: false
-    },
-    senderName: {
-      type: String,
-      trim: true
-    },
-    senderEmail: {
-      type: String,
-      trim: true
-    }
-  }, {
-  timestamps: true
+  isPredefined: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  senderName: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  senderEmail: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  }
+}, {
+  tableName: 'EmailTemplates',
+  timestamps: true,
+  underscored: false,
+  indexes: [
+    { fields: ['workspaceId', 'code'] }
+  ]
 });
-
-emailTemplateSchema.index({ workspaceId: 1, code: 1 });
-
-const EmailTemplate = mongoose.model('EmailTemplate', emailTemplateSchema);
 
 export default EmailTemplate;

@@ -1,113 +1,109 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
+import { sequelize } from '../config/db.js';
 
-const leaveBalanceSchema = new mongoose.Schema({
+const LeaveBalance = sequelize.define('LeaveBalance', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    index: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
   },
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: true,
-    index: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    }
   },
   leaveTypeId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'LeaveType',
-    required: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'LeaveTypes',
+      key: 'id'
+    }
   },
   year: {
-    type: Number,
-    required: true,
-    index: true
+    type: DataTypes.INTEGER,
+    allowNull: false
   },
   totalQuota: {
-    type: Number,
-    required: true
+    type: DataTypes.DECIMAL(8, 2),
+    allowNull: false
   },
   used: {
-    type: Number,
-    default: 0
+    type: DataTypes.DECIMAL(8, 2),
+    defaultValue: 0
   },
   pending: {
-    type: Number,
-    default: 0
+    type: DataTypes.DECIMAL(8, 2),
+    defaultValue: 0
   },
   available: {
-    type: Number,
-    default: 0
+    type: DataTypes.DECIMAL(8, 2),
+    defaultValue: 0
   },
   carriedForward: {
-    type: Number,
-    default: 0
+    type: DataTypes.DECIMAL(8, 2),
+    defaultValue: 0
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   }
 }, {
-  timestamps: true
-});
-
-// Compound unique index
-leaveBalanceSchema.index({ userId: 1, leaveTypeId: 1, year: 1 }, { unique: true });
-
-// Virtual getter to always calculate available dynamically
-leaveBalanceSchema.virtual('calculatedAvailable').get(function() {
-  return this.totalQuota - this.used - this.pending;
-});
-
-// Calculate totalQuota and available before saving
-leaveBalanceSchema.pre('save', function(next) {
-  // totalQuota should always reflect: base annual quota + carried forward
-  // Note: This assumes totalQuota is set correctly on creation
-  // If you need to recalculate from annualQuota, populate leaveTypeId first
-  
-  this.available = this.totalQuota - this.used - this.pending;
-  next();
-});
-
-// Ensure virtuals are included in JSON output
-leaveBalanceSchema.set('toJSON', { virtuals: true });
-leaveBalanceSchema.set('toObject', { virtuals: true });
-
-// Helper method to recalculate total quota from annual quota + carried forward
-leaveBalanceSchema.methods.recalculateTotalQuota = async function(annualQuota) {
-  if (annualQuota === undefined) {
-    // If annualQuota not provided, fetch from leaveType
-    const LeaveType = mongoose.model('LeaveType');
-    const leaveType = await LeaveType.findById(this.leaveTypeId);
-    if (leaveType) {
-      this.totalQuota = leaveType.annualQuota + (this.carriedForward || 0);
+  tableName: 'LeaveBalances',
+  timestamps: true,
+  underscored: false,
+  indexes: [
+    { fields: ['userId', 'leaveTypeId', 'year'], unique: true },
+    { fields: ['workspaceId', 'year'] }
+  ],
+  hooks: {
+    beforeCreate: (balance) => {
+      balance.available = balance.totalQuota - balance.used - balance.pending;
+    },
+    beforeUpdate: (balance) => {
+      balance.available = balance.totalQuota - balance.used - balance.pending;
     }
-  } else {
-    this.totalQuota = annualQuota + (this.carriedForward || 0);
   }
+});
+
+LeaveBalance.prototype.recalculateTotalQuota = async function(annualQuota) {
+  this.totalQuota = annualQuota + (this.carriedForward || 0);
+  this.available = this.totalQuota - this.used - this.pending;
   return this;
 };
 
-// Static method to apply carry forward for year-end
-leaveBalanceSchema.statics.applyCarryForward = async function(userId, leaveTypeId, fromYear, toYear, maxCarryForward) {
-  const oldBalance = await this.findOne({ userId, leaveTypeId, year: fromYear });
+LeaveBalance.applyCarryForward = async function(userId, leaveTypeId, fromYear, toYear, maxCarryForward) {
+  const oldBalance = await this.findOne({ where: { userId, leaveTypeId, year: fromYear } });
   if (!oldBalance) return null;
 
-  // Calculate how much can be carried forward
   const availableToCarry = oldBalance.available;
   const actualCarryForward = maxCarryForward > 0 
     ? Math.min(availableToCarry, maxCarryForward) 
     : availableToCarry;
 
-  // Find or create balance for new year
-  let newBalance = await this.findOne({ userId, leaveTypeId, year: toYear });
+  let newBalance = await this.findOne({ where: { userId, leaveTypeId, year: toYear } });
   
   if (newBalance) {
     newBalance.carriedForward = actualCarryForward;
-    // Recalculate totalQuota with carry forward
-    await newBalance.recalculateTotalQuota();
     await newBalance.save();
   }
 
   return newBalance;
 };
-
-const LeaveBalance = mongoose.model('LeaveBalance', leaveBalanceSchema);
 
 export default LeaveBalance;

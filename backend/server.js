@@ -8,8 +8,11 @@ import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import connectDB from './config/db.js';
+import { connectDB } from './config/db.js';
 import { sanitizeRequestInputs } from './utils/requestSanitizer.js';
+
+// Import models and associations
+import './models/index.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';

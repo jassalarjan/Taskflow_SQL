@@ -1,217 +1,149 @@
-import mongoose from 'mongoose';
+import { DataTypes } from 'sequelize';
 import bcrypt from 'bcryptjs';
+import { sequelize } from '../config/db.js';
 
-const userSchema = new mongoose.Schema({
+const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
   full_name: {
-    type: String,
-    required: [true, 'Full name is required'],
-    trim: true
+    type: DataTypes.STRING,
+    allowNull: false
   },
   email: {
-    type: String,
-    required: [true, 'Email is required'],
+    type: DataTypes.STRING,
+    allowNull: false,
     unique: true,
-    lowercase: true,
-    trim: true
+    lowercase: true
   },
   password_hash: {
-    type: String,
-    required: [true, 'Password is required'],
-    minlength: 6
+    type: DataTypes.STRING,
+    allowNull: false
   },
   profile_picture: {
-    type: String,
-    default: null  // Will store base64 data URL or null
+    type: DataTypes.TEXT,
+    allowNull: true
   },
   role: {
-    type: String,
-    enum: ['admin', 'hr', 'team_lead', 'member', 'community_admin'],
-    default: 'member'
+    type: DataTypes.ENUM('admin', 'hr', 'team_lead', 'member', 'community_admin'),
+    defaultValue: 'member'
   },
   employmentStatus: {
-    type: String,
-    enum: ['ACTIVE', 'INACTIVE', 'ON_NOTICE', 'EXITED'],
-    default: 'ACTIVE'
+    type: DataTypes.ENUM('ACTIVE', 'INACTIVE', 'ON_NOTICE', 'EXITED'),
+    defaultValue: 'ACTIVE'
   },
   team_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Team',
-    default: null
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Teams',
+      key: 'id'
+    }
   },
-  // MULTIPLE TEAMS SUPPORT: Users in Core Workspace can be part of multiple teams
-  teams: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Team'
-  }],
-  // WORKSPACE SUPPORT: All users belong to a workspace (optional for admins)
-  // Legacy single workspace field (deprecated, kept for backward compatibility)
   workspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: false,  // Not required - admins can exist without workspace
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    },
     index: true
   },
-  // NEW: Multiple workspaces support
-  workspaces: [{
-    workspaceId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Workspace',
-      required: true
-    },
-    role: {
-      type: String,
-      enum: ['admin', 'hr', 'team_lead', 'member', 'community_admin'],
-      required: true
-    },
-    joinedAt: {
-      type: Date,
-      default: Date.now
-    },
-    isActive: {
-      type: Boolean,
-      default: true
-    }
-  }],
-  // Current active workspace for session
   currentWorkspaceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Workspace',
-    required: false
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'Workspaces',
+      key: 'id'
+    }
   },
-  // EMAIL VERIFICATION: For community user registration
   isEmailVerified: {
-    type: Boolean,
-    default: false
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   },
   verificationToken: {
-    type: String,
-    default: null
+    type: DataTypes.STRING,
+    allowNull: true
   },
   verificationTokenExpiry: {
-    type: Date,
-    default: null
+    type: DataTypes.DATE,
+    allowNull: true
   },
   resetPasswordToken: {
-    type: String,
-    default: null
+    type: DataTypes.STRING,
+    allowNull: true
   },
   resetPasswordExpiry: {
-    type: Date,
-    default: null
+    type: DataTypes.DATE,
+    allowNull: true
   },
-  created_at: {
-    type: Date,
-    default: Date.now
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
   },
-  updated_at: {
-    type: Date,
-    default: Date.now
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW
+  }
+}, {
+  tableName: 'Users',
+  timestamps: true,
+  underscored: false,
+  hooks: {
+    beforeCreate: async (user) => {
+      if (user.changed('password_hash')) {
+        const salt = await bcrypt.genSalt(10);
+        user.password_hash = await bcrypt.hash(user.password_hash, salt);
+      }
+    },
+    beforeUpdate: async (user) => {
+      if (user.changed('password_hash')) {
+        const salt = await bcrypt.genSalt(10);
+        user.password_hash = await bcrypt.hash(user.password_hash, salt);
+      }
+    }
   }
 });
 
-// WORKSPACE SUPPORT: Compound index for workspace-scoped queries
-userSchema.index({ workspaceId: 1, email: 1 });
-userSchema.index({ 'workspaces.workspaceId': 1 });
-userSchema.index({ currentWorkspaceId: 1 });
-
-// Pre-save hook: Sync legacy workspaceId with workspaces array
-userSchema.pre('save', function(next) {
-  // If this is a new document with workspaceId but no workspaces array
-  if (this.isNew && this.workspaceId && (!this.workspaces || this.workspaces.length === 0)) {
-    this.workspaces = [{
-      workspaceId: this.workspaceId,
-      role: this.role,
-      joinedAt: new Date(),
-      isActive: true
-    }];
-    this.currentWorkspaceId = this.workspaceId;
-  }
-  next();
-});
-
-// Hash password before saving
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password_hash')) return next();
-  
-  const salt = await bcrypt.genSalt(10);
-  this.password_hash = await bcrypt.hash(this.password_hash, salt);
-  next();
-});
-
-// Method to compare passwords
-userSchema.methods.comparePassword = async function(candidatePassword) {
+// Instance methods
+User.prototype.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password_hash);
 };
 
-// Helper method: Get role in specific workspace
-userSchema.methods.getRoleInWorkspace = function(workspaceId) {
-  const workspace = this.workspaces.find(
-    ws => ws.workspaceId.toString() === workspaceId.toString()
-  );
-  return workspace ? workspace.role : null;
+User.prototype.getRoleInWorkspace = async function(workspaceId) {
+  // For now, return the legacy role field
+  // TODO: Implement workspace-specific roles via UserWorkspace junction table
+  return this.role;
 };
 
-// Helper method: Check if user belongs to workspace
-userSchema.methods.belongsToWorkspace = function(workspaceId) {
-  return this.workspaces.some(
-    ws => ws.workspaceId.toString() === workspaceId.toString() && ws.isActive
-  );
+User.prototype.belongsToWorkspace = async function(workspaceId) {
+  // TODO: Check against UserWorkspace junction table
+  return this.workspaceId?.toString() === workspaceId?.toString() || this.role === 'admin';
 };
 
-// Helper method: Add user to workspace
-userSchema.methods.addToWorkspace = async function(workspaceId, role) {
-  // Check if already in workspace
-  const existing = this.workspaces.find(
-    ws => ws.workspaceId.toString() === workspaceId.toString()
-  );
-  
-  if (existing) {
-    existing.role = role;
-    existing.isActive = true;
-  } else {
-    this.workspaces.push({
-      workspaceId,
-      role,
-      joinedAt: new Date(),
-      isActive: true
-    });
-  }
-  
-  // Set as current workspace if no current workspace set
-  if (!this.currentWorkspaceId) {
-    this.currentWorkspaceId = workspaceId;
-  }
-  
+User.prototype.addToWorkspace = async function(workspaceId, role) {
+  this.workspaceId = workspaceId;
+  this.currentWorkspaceId = workspaceId;
+  this.role = role;
   await this.save();
 };
 
-// Helper method: Remove user from workspace
-userSchema.methods.removeFromWorkspace = async function(workspaceId) {
-  const workspace = this.workspaces.find(
-    ws => ws.workspaceId.toString() === workspaceId.toString()
-  );
-  
-  if (workspace) {
-    workspace.isActive = false;
+User.prototype.removeFromWorkspace = async function(workspaceId) {
+  if (this.workspaceId?.toString() === workspaceId?.toString()) {
+    this.workspaceId = null;
+    this.currentWorkspaceId = null;
+    await this.save();
   }
-  
-  // If current workspace was removed, switch to another
-  if (this.currentWorkspaceId?.toString() === workspaceId.toString()) {
-    const activeWorkspace = this.workspaces.find(ws => ws.isActive);
-    this.currentWorkspaceId = activeWorkspace ? activeWorkspace.workspaceId : null;
-  }
-  
-  await this.save();
 };
 
-// Helper method: Switch workspace
-userSchema.methods.switchWorkspace = async function(workspaceId) {
-  if (!this.belongsToWorkspace(workspaceId)) {
+User.prototype.switchWorkspace = async function(workspaceId) {
+  if (!await this.belongsToWorkspace(workspaceId)) {
     throw new Error('User does not belong to this workspace');
   }
-  
   this.currentWorkspaceId = workspaceId;
   await this.save();
 };
 
-export default mongoose.model('User', userSchema);
+export default User;
