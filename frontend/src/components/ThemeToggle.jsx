@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { Sun, Moon, Monitor, Palette, ChevronDown } from 'lucide-react';
 

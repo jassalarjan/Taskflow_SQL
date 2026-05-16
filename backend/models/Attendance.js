@@ -3,12 +3,12 @@ import { sequelize } from '../config/db.js';
 
 const Attendance = sequelize.define('Attendance', {
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
+    type: DataTypes.BIGINT.UNSIGNED,
+    autoIncrement: true,
     primaryKey: true
   },
   userId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'Users',
@@ -16,7 +16,7 @@ const Attendance = sequelize.define('Attendance', {
     }
   },
   workspaceId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'Workspaces',
@@ -52,7 +52,7 @@ const Attendance = sequelize.define('Attendance', {
     defaultValue: false
   },
   overrideBy: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: true,
     references: {
       model: 'Users',

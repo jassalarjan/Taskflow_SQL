@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useSidebar } from '../context/SidebarContext';
@@ -115,7 +115,7 @@ const Teams = () => {
   const handleUpdateTeam = async (e) => {
     e.preventDefault();
     try {
-      await api.patch(`/teams/${selectedTeam._id}`, editFormData);
+      await api.patch(`/teams/${selectedTeam.id}`, editFormData);
       setShowEditModal(false);
       setEditFormData({ name: '', lead_id: '' });
       setSelectedTeam(null);
@@ -131,7 +131,7 @@ const Teams = () => {
     try {
       if (isMultiSelect && selectedUserIds.length > 0) {
         // Bulk add members
-        const response = await api.post(`/teams/${selectedTeam._id}/members/bulk`, {
+        const response = await api.post(`/teams/${selectedTeam.id}/members/bulk`, {
           userIds: selectedUserIds,
         });
         
@@ -147,7 +147,7 @@ const Teams = () => {
         alert(message);
       } else if (selectedUserId) {
         // Single add member
-        await api.post(`/teams/${selectedTeam._id}/members`, {
+        await api.post(`/teams/${selectedTeam.id}/members`, {
           userId: selectedUserId,
         });
       }
@@ -288,8 +288,8 @@ const Teams = () => {
 
     // Reorder teams array
     const updatedTeams = [...teams];
-    const draggedIndex = updatedTeams.findIndex(t => t._id === draggedTeam._id);
-    const targetIndex = updatedTeams.findIndex(t => t._id === targetTeam._id);
+    const draggedIndex = updatedTeams.findIndex(t => t.id === draggedTeam.id);
+    const targetIndex = updatedTeams.findIndex(t => t.id === targetTeam.id);
 
     updatedTeams.splice(draggedIndex, 1);
     updatedTeams.splice(targetIndex, 0, draggedTeam);
@@ -300,7 +300,7 @@ const Teams = () => {
     // Send new order to backend
     try {
       const teamOrder = updatedTeams.map((team, index) => ({
-        id: team._id,
+        id: team.id,
         priority: updatedTeams.length - index
       }));
       
@@ -376,18 +376,22 @@ const Teams = () => {
             <div className="flex items-center gap-3">
               <button
                 onClick={handleDeleteAllTeams}
-                className="px-4 py-2 bg-red-600 text-white rounded-[0.125rem] hover:bg-red-700 transition-colors flex items-center space-x-2"
+                className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
+                  theme === 'dark'
+                    ? 'bg-red-600/20 text-red-400 border border-red-600/30 hover:bg-red-600 hover:text-white'
+                    : 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white'
+                }`}
                 title="Delete all teams"
               >
-                <Trash2 className="w-5 h-5" />
+                <Trash2 className="w-4 h-4" />
                 <span>Delete All</span>
               </button>
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="px-4 py-2 bg-[#136dec] text-white rounded-[0.125rem] hover:bg-[#1158c7] transition-colors flex items-center space-x-2"
+                className="px-4 py-2.5 bg-[#136dec] text-white rounded-lg font-medium text-sm hover:bg-[#1158c7] transition-colors flex items-center gap-2 shadow-lg shadow-[#136dec]/25"
                 data-testid="create-team-btn"
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="w-4 h-4" />
                 <span>Create Team</span>
               </button>
             </div>
@@ -395,7 +399,7 @@ const Teams = () => {
         </div>
 
         {teams.length === 0 ? (
-          <div className={`rounded-[0.125rem] shadow-md p-12 text-center border ${
+          <div className={`rounded-lg shadow-lg p-12 text-center border ${
             theme === 'dark' ? 'bg-[#1c2027] border-[#282f39]' : 'bg-white border-gray-200'
           }`}>
             <Users className={`w-16 h-16 mx-auto mb-4 ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-400'}`} />
@@ -412,87 +416,89 @@ const Teams = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {teams.map((team) => (
             <div
-              key={team._id}
+              key={team.id}
               draggable={['admin', 'hr', 'community_admin'].includes(user?.role)}
               onDragStart={(e) => handleDragStart(e, team)}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, team)}
-              className={`rounded-[0.125rem] shadow-md p-6 relative border transition-colors ${
+              className={`rounded-xl shadow-lg p-5 relative border-2 transition-all duration-200 hover:shadow-xl hover:scale-[1.01] ${
                 theme === 'dark' 
                   ? 'bg-[#1c2027] border-[#282f39] hover:border-[#3e454f]' 
                   : 'bg-white border-gray-200 hover:border-gray-300'
-              } ${draggedTeam?._id === team._id ? 'opacity-50' : ''} ${['admin', 'hr', 'community_admin'].includes(user?.role) ? 'cursor-move' : ''}`}
+              } ${draggedTeam?.id === team.id ? 'opacity-50' : ''} ${['admin', 'hr', 'community_admin'].includes(user?.role) ? 'cursor-move' : ''}`}
               data-testid="team-card"
             >
               {/* Pin Indicator */}
               {team.pinned && (
-                <div className="absolute top-2 left-2">
+                <div className="absolute top-3 left-3">
                   <Pin className="w-5 h-5 text-yellow-500 fill-yellow-500" />
                 </div>
               )}
 
               {/* Drag Handle for Admin/HR/Community Admin */}
               {['admin', 'hr', 'community_admin'].includes(user?.role) && (
-                <div className="absolute top-2 right-2">
+                <div className="absolute top-3 right-3">
                   <GripVertical className={`w-5 h-5 ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-400'}`} />
                 </div>
               )}
 
-              <div className="flex items-center justify-between mb-4 mt-4">
-                <h3 className={`text-xl font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{team.name}</h3>
-                <div className="flex items-center space-x-2">
-                  <Users className="w-6 h-6 text-[#136dec]" />
-                  {['admin', 'hr', 'community_admin'].includes(user?.role) && (
-                    <>
-                      <button
-                        onClick={() => handleEditTeam(team)}
-                        className={`hover:text-blue-600 p-1 transition-colors ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-400'}`}
-                        title="Edit Team"
-                        data-testid="edit-team-btn"
-                      >
-                        <Edit className="w-5 h-5" />
-                      </button>
-                      <button
-                        onClick={() => handleTogglePin(team._id)}
-                        className={`hover:text-yellow-600 p-1 transition-colors ${
-                          team.pinned ? 'text-yellow-500' : theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-400'
-                        }`}
-                        title={team.pinned ? 'Unpin Team' : 'Pin Team'}
-                        data-testid="pin-team-btn"
-                      >
-                        <Pin className={`w-5 h-5 ${team.pinned ? 'fill-yellow-500' : ''}`} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteTeam(team._id, team.name)}
-                        className="text-red-600 hover:text-red-800 p-1"
-                        title="Delete Team"
-                        data-testid="delete-team-btn"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </>
-                  )}
+              <div className="flex items-center justify-between mb-4 mt-2">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-[#136dec]/20' : 'bg-blue-100'}`}>
+                    <Users className="w-5 h-5 text-[#136dec]" />
+                  </div>
+                  <h3 className={`text-lg font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{team.name}</h3>
                 </div>
+                {['admin', 'hr', 'community_admin'].includes(user?.role) && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleEditTeam(team)}
+                      className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-[#282f39] text-[#9da8b9] hover:text-blue-400' : 'hover:bg-gray-100 text-gray-400 hover:text-blue-600'}`}
+                      title="Edit Team"
+                      data-testid="edit-team-btn"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleTogglePin(team.id)}
+                      className={`p-2 rounded-lg transition-colors ${
+                        team.pinned ? 'text-yellow-500' : theme === 'dark' ? 'hover:bg-[#282f39] text-[#9da8b9] hover:text-yellow-400' : 'hover:bg-gray-100 text-gray-400 hover:text-yellow-500'
+                      }`}
+                      title={team.pinned ? 'Unpin Team' : 'Pin Team'}
+                      data-testid="pin-team-btn"
+                    >
+                      <Pin className={`w-4 h-4 ${team.pinned ? 'fill-yellow-500' : ''}`} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTeam(team.id, team.name)}
+                      className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-[#282f39] text-[#9da8b9] hover:text-red-400' : 'hover:bg-gray-100 text-gray-400 hover:text-red-600'}`}
+                      title="Delete Team"
+                      data-testid="delete-team-btn"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
 
-              <div className="space-y-2 mb-4">
-                <div className="text-sm">
-                  <span className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>HR:</span>
-                  <span className={`ml-2 ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-600'}`}>{team.hr_id?.full_name}</span>
+              <div className={`space-y-3 mb-4 p-4 rounded-lg ${theme === 'dark' ? 'bg-[#111418]' : 'bg-gray-50'}`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-sm font-medium ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-500'}`}>HR</span>
+                  <span className={`text-sm font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{team.hr_id?.full_name || 'Not assigned'}</span>
                 </div>
-                <div className="text-sm">
-                  <span className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>Team Lead:</span>
-                  <span className={`ml-2 ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-600'}`}>{team.lead_id?.full_name}</span>
+                <div className="flex items-center justify-between">
+                  <span className={`text-sm font-medium ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-500'}`}>Team Lead</span>
+                  <span className={`text-sm font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{team.lead_id?.full_name || 'Not assigned'}</span>
                 </div>
-                <div className="text-sm">
-                  <span className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>Members:</span>
-                  <span className={`ml-2 ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-600'}`}>{team.members?.length || 0}</span>
+                <div className="flex items-center justify-between">
+                  <span className={`text-sm font-medium ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-500'}`}>Members</span>
+                  <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${theme === 'dark' ? 'bg-[#136dec] text-white' : 'bg-blue-100 text-blue-700'}`}>{team.members?.length || 0}</span>
                 </div>
               </div>
 
               <div className={`border-t pt-4 ${theme === 'dark' ? 'border-[#282f39]' : 'border-gray-200'}`}>
-                <h4 className="text-sm font-medium text-white mb-2">Team Members</h4>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
+                <h4 className={`text-sm font-semibold mb-3 ${theme === 'dark' ? 'text-white' : 'text-gray-700'}`}>Team Members</h4>
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                   {team.members && team.members.length > 0 ? (
                     team.members.map((member, index) => {
                       const isHR = team.hr_id?._id === member._id;
@@ -502,19 +508,23 @@ const Teams = () => {
                       
                       return (
                         <div
-                          key={`${team._id}-${member._id}-${index}`}
-                          className={`flex justify-between items-center rounded-[0.125rem] p-2 border ${theme === 'dark' ? 'bg-[#111418] border-[#282f39]' : 'bg-white border-gray-200'}`}
+                          key={`${team.id}-${member.id}-${index}`}
+                          className={`flex justify-between items-center rounded-lg p-2.5 border transition-colors ${
+                            isHROrLead 
+                              ? theme === 'dark' ? 'bg-[#136dec]/10 border-[#136dec]/30' : 'bg-blue-50 border-blue-200'
+                              : theme === 'dark' ? 'bg-[#111418] border-[#282f39]' : 'bg-white border-gray-200'
+                          }`}
                           data-testid="team-member"
                         >
-                          <span className={`text-sm ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                          <span className={`text-sm font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                             {member.full_name}
-                            {roleLabel && <span className="text-xs text-blue-500 ml-1">{roleLabel}</span>}
+                            {roleLabel && <span className={`text-xs ml-1.5 ${theme === 'dark' ? 'text-[#136dec]' : 'text-blue-600'}`}>{roleLabel}</span>}
                           </span>
                           {['admin', 'hr', 'community_admin'].includes(user?.role) && (
                             isHROrLead ? (
                               <button
                                 disabled
-                                className="text-gray-400 cursor-not-allowed opacity-50"
+                                className="text-gray-400 cursor-not-allowed opacity-50 p-1"
                                 title={`Cannot remove ${isHR && isLead ? 'HR and Team Lead' : isHR ? 'HR' : 'Team Lead'} from their own team`}
                                 data-testid="remove-member-btn-disabled"
                               >
@@ -522,8 +532,8 @@ const Teams = () => {
                               </button>
                             ) : (
                               <button
-                                onClick={() => handleRemoveMember(team._id, member._id)}
-                                className="text-red-600 hover:text-red-800"
+                                onClick={() => handleRemoveMember(team.id, member.id)}
+                                className={`p-1.5 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-red-500/20 text-[#9da8b9] hover:text-red-400' : 'hover:bg-red-100 text-gray-400 hover:text-red-600'}`}
                                 data-testid="remove-member-btn"
                               >
                                 <UserMinus className="w-4 h-4" />
@@ -534,7 +544,7 @@ const Teams = () => {
                       );
                     })
                   ) : (
-                    <p className="text-sm text-[#9da8b9]">No members yet</p>
+                    <p className={`text-sm ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-500'}`}>No members yet</p>
                   )}
                 </div>
               </div>
@@ -545,7 +555,11 @@ const Teams = () => {
                     setSelectedTeam(team);
                     setShowAddMemberModal(true);
                   }}
-                  className="w-full mt-4 px-4 py-2 bg-green-600 text-white rounded-[0.125rem] hover:bg-green-700 transition-colors flex items-center justify-center space-x-2"
+                  className={`w-full mt-4 px-4 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2 ${
+                    theme === 'dark' 
+                      ? 'bg-green-600/20 text-green-400 border border-green-600/30 hover:bg-green-600 hover:text-white' 
+                      : 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-600 hover:text-white'
+                  }`}
                   data-testid="add-member-btn"
                 >
                   <UserPlus className="w-4 h-4" />
@@ -561,177 +575,225 @@ const Teams = () => {
 
       {/* Edit Team Modal */}
       {showEditModal && selectedTeam && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" data-testid="edit-team-modal">
-          <div className="bg-[#1c2027] rounded-[0.125rem] p-8 max-w-md w-full mx-4 border border-[#282f39]">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-white">Edit Team</h2>
-              <button
-                onClick={() => {
-                  setShowEditModal(false);
-                  setEditFormData({ name: '', lead_id: '' });
-                  setSelectedTeam(null);
-                }}
-                className="text-[#9da8b9] hover:text-white transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" data-testid="edit-team-modal">
+          <div className={`relative w-full max-w-md rounded-xl shadow-2xl animate-scale-in ${
+            theme === 'dark' ? 'bg-[#1c2027] border border-[#282f39]' : 'bg-white'
+          }`}>
+            <button
+              onClick={() => {
+                setShowEditModal(false);
+                setEditFormData({ name: '', lead_id: '' });
+                setSelectedTeam(null);
+              }}
+              className={`absolute top-4 right-4 p-2 rounded-lg transition-colors ${
+                theme === 'dark' ? 'text-[#9da8b9] hover:text-white hover:bg-[#282f39]' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="p-6">
+              <h2 className={`text-xl font-bold mb-6 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>Edit Team</h2>
+
+              <form onSubmit={handleUpdateTeam} className="space-y-5">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-700'}`}>
+                    Team Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={editFormData.name}
+                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                    className={`w-full px-4 py-2.5 rounded-lg border transition-colors ${
+                      theme === 'dark' 
+                        ? 'bg-[#111418] border-[#282f39] text-white placeholder-[#9da8b9] focus:border-[#136dec] focus:ring-1 focus:ring-[#136dec]' 
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-[#136dec] focus:ring-1 focus:ring-[#136dec]'
+                    }`}
+                    required
+                    data-testid="edit-team-name-input"
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-700'}`}>
+                    Team Lead *
+                  </label>
+                  <select
+                    value={editFormData.lead_id}
+                    onChange={(e) => setEditFormData({ ...editFormData, lead_id: e.target.value })}
+                    className={`w-full px-4 py-2.5 rounded-lg border transition-colors ${
+                      theme === 'dark' 
+                        ? 'bg-[#111418] border-[#282f39] text-white focus:border-[#136dec] focus:ring-1 focus:ring-[#136dec]' 
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-[#136dec] focus:ring-1 focus:ring-[#136dec]'
+                    }`}
+                    required
+                    data-testid="edit-team-lead-select"
+                  >
+                    <option value="">Select Team Lead</option>
+                    {users
+                      .filter((u) => u.role === 'team_lead' || u.role === 'admin')
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.full_name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className={`rounded-lg p-3 ${
+                  theme === 'dark' ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-blue-50 border border-blue-100'
+                }`}>
+                  <p className={`text-xs ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>
+                    <strong>Note:</strong> HR assignment cannot be changed. Only team name and team lead can be updated.
+                  </p>
+                </div>
+
+                <div className="flex gap-3 justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditModal(false);
+                      setEditFormData({ name: '', lead_id: '' });
+                      setSelectedTeam(null);
+                    }}
+                    className={`px-5 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+                      theme === 'dark' 
+                        ? 'bg-[#282f39] text-white hover:bg-[#333a47]' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="px-5 py-2.5 bg-[#136dec] text-white rounded-lg font-medium text-sm hover:bg-[#1158c7] transition-colors shadow-lg shadow-[#136dec]/25"
+                    data-testid="submit-edit-team"
+                  >
+                    Update Team
+                  </button>
+                </div>
+              </form>
             </div>
-
-            <form onSubmit={handleUpdateTeam} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Team Name *
-                </label>
-                <input
-                  type="text"
-                  value={editFormData.name}
-                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-                  className="input"
-                  required
-                  data-testid="edit-team-name-input"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Team Lead *
-                </label>
-                <select
-                  value={editFormData.lead_id}
-                  onChange={(e) => setEditFormData({ ...editFormData, lead_id: e.target.value })}
-                  className="input"
-                  required
-                  data-testid="edit-team-lead-select"
-                >
-                  <option value="">Select Team Lead</option>
-                  {users
-                    .filter((u) => u.role === 'team_lead' || u.role === 'admin')
-                    .map((u) => (
-                      <option key={u._id} value={u._id}>
-                        {u.full_name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-[0.125rem] p-3 mt-4">
-                <p className="text-xs text-blue-400">
-                  <strong>Note:</strong> HR assignment cannot be changed. Only team name and team lead can be updated.
-                </p>
-              </div>
-
-              <div className="flex justify-end space-x-4 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEditModal(false);
-                    setEditFormData({ name: '', lead_id: '' });
-                    setSelectedTeam(null);
-                  }}
-                  className="btn btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary" data-testid="submit-edit-team">
-                  Update Team
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
 
       {/* Create Team Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" data-testid="create-team-modal">
-          <div className="bg-[#1c2027] rounded-[0.125rem] p-8 max-w-md w-full mx-4 border border-[#282f39]">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-white">Create New Team</h2>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="text-[#9da8b9] hover:text-white transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" data-testid="create-team-modal">
+          <div className={`relative w-full max-w-md rounded-xl shadow-2xl animate-scale-in ${
+            theme === 'dark' ? 'bg-[#1c2027] border border-[#282f39]' : 'bg-white'
+          }`}>
+            <button
+              onClick={() => setShowCreateModal(false)}
+              className={`absolute top-4 right-4 p-2 rounded-lg transition-colors ${
+                theme === 'dark' ? 'text-[#9da8b9] hover:text-white hover:bg-[#282f39]' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="p-6">
+              <h2 className={`text-xl font-bold mb-6 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>Create New Team</h2>
+
+              <form onSubmit={handleCreateTeam} className="space-y-5">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-700'}`}>
+                    Team Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className={`w-full px-4 py-2.5 rounded-lg border transition-colors ${
+                      theme === 'dark' 
+                        ? 'bg-[#111418] border-[#282f39] text-white placeholder-[#9da8b9] focus:border-[#136dec] focus:ring-1 focus:ring-[#136dec]' 
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-[#136dec] focus:ring-1 focus:ring-[#136dec]'
+                    }`}
+                    required
+                    data-testid="team-name-input"
+                  />
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-700'}`}>
+                    HR *
+                  </label>
+                  <select
+                    value={formData.hr_id}
+                    onChange={(e) => setFormData({ ...formData, hr_id: e.target.value })}
+                    className={`w-full px-4 py-2.5 rounded-lg border transition-colors ${
+                      theme === 'dark' 
+                        ? 'bg-[#111418] border-[#282f39] text-white focus:border-[#136dec] focus:ring-1 focus:ring-[#136dec]' 
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-[#136dec] focus:ring-1 focus:ring-[#136dec]'
+                    }`}
+                    required
+                    data-testid="team-hr-select"
+                  >
+                    <option value="">Select HR</option>
+                    {users
+                      .filter((u) => u.role === 'hr' || u.role === 'admin')
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.full_name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-700'}`}>
+                    Team Lead *
+                  </label>
+                  <select
+                    value={formData.lead_id}
+                    onChange={(e) => setFormData({ ...formData, lead_id: e.target.value })}
+                    className={`w-full px-4 py-2.5 rounded-lg border transition-colors ${
+                      theme === 'dark' 
+                        ? 'bg-[#111418] border-[#282f39] text-white focus:border-[#136dec] focus:ring-1 focus:ring-[#136dec]' 
+                        : 'bg-white border-gray-300 text-gray-900 focus:border-[#136dec] focus:ring-1 focus:ring-[#136dec]'
+                    }`}
+                    required
+                    data-testid="team-lead-select"
+                  >
+                    <option value="">Select Team Lead</option>
+                    {users
+                      .filter((u) => u.role === 'team_lead' || u.role === 'admin')
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.full_name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="flex gap-3 justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(false)}
+                    className={`px-5 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+                      theme === 'dark' 
+                        ? 'bg-[#282f39] text-white hover:bg-[#333a47]' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="px-5 py-2.5 bg-[#136dec] text-white rounded-lg font-medium text-sm hover:bg-[#1158c7] transition-colors shadow-lg shadow-[#136dec]/25"
+                    data-testid="submit-create-team"
+                  >
+                    Create Team
+                  </button>
+                </div>
+              </form>
             </div>
-
-            <form onSubmit={handleCreateTeam} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Team Name *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="input"
-                  required
-                  data-testid="team-name-input"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  HR *
-                </label>
-                <select
-                  value={formData.hr_id}
-                  onChange={(e) => setFormData({ ...formData, hr_id: e.target.value })}
-                  className="input"
-                  required
-                  data-testid="team-hr-select"
-                >
-                  <option value="">Select HR</option>
-                  {users
-                    .filter((u) => u.role === 'hr' || u.role === 'admin')
-                    .map((u) => (
-                      <option key={u._id} value={u._id}>
-                        {u.full_name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Team Lead *
-                </label>
-                <select
-                  value={formData.lead_id}
-                  onChange={(e) => setFormData({ ...formData, lead_id: e.target.value })}
-                  className="input"
-                  required
-                  data-testid="team-lead-select"
-                >
-                  <option value="">Select Team Lead</option>
-                  {users
-                    .filter((u) => u.role === 'team_lead' || u.role === 'admin')
-                    .map((u) => (
-                      <option key={u._id} value={u._id}>
-                        {u.full_name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="flex justify-end space-x-4 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="btn btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary" data-testid="submit-create-team">
-                  Create Team
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
 
-      {/* Add Member Modal - Enhanced with Search */}
+{/* Add Member Modal - Enhanced with Search */}
       {showAddMemberModal && selectedTeam && (() => {
         // Filter available users (not already in team)
         const availableUsers = users.filter((u) => !selectedTeam.members?.some((m) => m._id === u._id));
@@ -746,12 +808,14 @@ const Teams = () => {
         });
 
         return (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" data-testid="add-member-modal">
-            <div className="bg-[#1c2027] rounded-[0.125rem] p-8 max-w-3xl w-full mx-4 border border-[#282f39] max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-center mb-6">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" data-testid="add-member-modal">
+            <div className={`relative w-full max-w-2xl rounded-xl shadow-2xl animate-scale-in max-h-[90vh] overflow-hidden flex flex-col ${
+              theme === 'dark' ? 'bg-[#1c2027] border border-[#282f39]' : 'bg-white'
+            }`}>
+              <div className="flex justify-between items-center p-6 border-b border-[#282f39]">
                 <div>
-                  <h2 className="text-2xl font-bold text-white">Add Members to {selectedTeam.name}</h2>
-                  <p className="text-sm text-[#9da8b9] mt-1">
+                  <h2 className={`text-xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>Add Members to {selectedTeam.name}</h2>
+                  <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-500'}`}>
                     {availableUsers.length} user(s) available | {selectedTeam.members?.length || 0} current member(s)
                   </p>
                 </div>
@@ -764,42 +828,48 @@ const Teams = () => {
                     setSearchQuery('');
                     setRoleFilter('all');
                   }}
-                  className="text-[#9da8b9] hover:text-white transition-colors"
+                  className={`p-2 rounded-lg transition-colors ${
+                    theme === 'dark' ? 'text-[#9da8b9] hover:text-white hover:bg-[#282f39]' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  }`}
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleAddMember} className="space-y-5">
+              <form onSubmit={handleAddMember} className="flex-1 overflow-hidden flex flex-col p-6 space-y-5">
                 {/* Search and Filter Bar */}
                 <div className="space-y-3">
                   {/* Search Input */}
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#9da8b9]" />
+                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-400'}`} />
                     <input
                       type="text"
                       placeholder="Search by name or email..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-[#111418] border border-[#282f39] rounded-[0.125rem] text-white placeholder-[#9da8b9] focus:border-[#136dec] focus:outline-none transition-colors"
+                      className={`w-full pl-10 pr-4 py-3 rounded-lg border transition-colors ${
+                        theme === 'dark' 
+                          ? 'bg-[#111418] border-[#282f39] text-white placeholder-[#9da8b9] focus:border-[#136dec]' 
+                          : 'bg-white border-gray-300 text-gray-900 focus:border-[#136dec]'
+                      }`}
                     />
                   </div>
 
                   {/* Filter Row */}
-                  <div className="flex flex-wrap gap-3 items-center">
-                    <div className="flex items-center gap-2">
-                      <Filter className="w-4 h-4 text-[#9da8b9]" />
-                      <span className="text-sm text-[#9da8b9]">Filter by role:</span>
-                    </div>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <Filter className={`w-4 h-4 ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-400'}`} />
+                    <span className={`text-sm ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-600'}`}>Filter by role:</span>
                     {['all', 'admin', 'hr', 'team_lead', 'member'].map(role => (
                       <button
                         key={role}
                         type="button"
                         onClick={() => setRoleFilter(role)}
-                        className={`px-3 py-1.5 rounded-[0.125rem] text-xs font-medium transition-colors ${
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                           roleFilter === role
                             ? 'bg-[#136dec] text-white'
-                            : 'bg-[#282f39] text-[#9da8b9] hover:bg-[#3e454f] hover:text-white'
+                            : theme === 'dark' 
+                              ? 'bg-[#282f39] text-[#9da8b9] hover:bg-[#3e454f] hover:text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                       >
                         {role === 'all' ? 'All Roles' : role.replace('_', ' ').toUpperCase()}
@@ -809,12 +879,16 @@ const Teams = () => {
                 </div>
 
                 {/* Multi-Select Toggle */}
-                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-[#136dec]/10 to-transparent rounded-[0.125rem] border border-[#136dec]/20">
+                <div className={`flex items-center justify-between p-4 rounded-lg border ${
+                  theme === 'dark' 
+                    ? 'bg-gradient-to-r from-[#136dec]/10 to-transparent border-[#136dec]/20' 
+                    : 'bg-gradient-to-r from-blue-50 to-transparent border-blue-100'
+                }`}>
                   <div>
-<span className="text-sm font-semibold text-white block">
-                      {isMultiSelect ? '(X) Multi-Select Mode Active' : 'Single Select Mode'}
+                    <span className={`text-sm font-semibold block ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                      {isMultiSelect ? 'Multi-Select Mode' : 'Single Select Mode'}
                     </span>
-                    <span className="text-xs text-[#9da8b9]">
+                    <span className={`text-xs ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-500'}`}>
                       {isMultiSelect ? `${selectedUserIds.length} user(s) selected` : 'Select one user at a time'}
                     </span>
                   </div>
@@ -825,148 +899,163 @@ const Teams = () => {
                       setSelectedUserId('');
                       setSelectedUserIds([]);
                     }}
-                    className={`px-5 py-2.5 rounded-[0.125rem] text-sm font-medium transition-all ${
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                       isMultiSelect 
-                        ? 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-600/25' 
-                        : 'bg-[#136dec] text-white hover:bg-[#1158c7] shadow-lg shadow-[#136dec]/25'
+                        ? 'bg-green-600 text-white hover:bg-green-700 shadow-lg' 
+                        : theme === 'dark' 
+                          ? 'bg-[#136dec] text-white hover:bg-[#1158c7] shadow-lg' 
+                          : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
                     }`}
                   >
-                    <span className="inline-flex items-center gap-2">
-                      {isMultiSelect ? <ChevronLeft size={16} /> : null}
-                      <span>{isMultiSelect ? 'Single Select' : 'Multi-Select'}</span>
-                      {!isMultiSelect ? <ChevronRight size={16} /> : null}
-                    </span>
+                    {isMultiSelect ? 'Switch to Single' : 'Switch to Multi'}
                   </button>
                 </div>
 
                 {/* User List */}
-                {isMultiSelect ? (
-                  /* Multi-Select UI */
-                  <div>
-                    <div className="flex justify-between items-center mb-3 px-1">
-                      <label className="text-sm font-medium text-white">
-                        {filteredUsers.length} user(s) • {selectedUserIds.length} selected
-                      </label>
-                      <button
-                        type="button"
-                        onClick={toggleSelectAll}
-                        className="text-sm font-medium text-[#136dec] hover:text-[#1158c7] transition-colors"
-                      >
-                        <span className="inline-flex items-center gap-1.5">
-                          {selectedUserIds.length === filteredUsers.length && filteredUsers.length > 0 ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
-                          <span>{selectedUserIds.length === filteredUsers.length && filteredUsers.length > 0 ? 'Deselect All' : 'Select All'}</span>
-                        </span>
-                      </button>
-                    </div>
-                    <div className="border border-[#282f39] rounded-[0.125rem] max-h-96 overflow-y-auto bg-[#111418]">
-                      {filteredUsers.length > 0 ? filteredUsers.map((u) => (
-                        <label
-                          key={u._id}
-                          className="flex items-center p-4 hover:bg-[#1c2027] cursor-pointer border-b border-[#282f39] last:border-b-0 transition-colors group"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedUserIds.includes(u._id)}
-                            onChange={() => toggleUserSelection(u._id)}
-                            className="w-5 h-5 text-[#136dec] rounded focus:ring-[#136dec] mr-4 cursor-pointer"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-white group-hover:text-[#136dec] transition-colors">{u.full_name}</div>
-                            <div className="text-sm text-[#9da8b9] truncate">
-                              {u.email}
-                            </div>
-                          </div>
-                          <div className="ml-3">
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[#282f39] text-[#9da8b9] capitalize">
-                              {u.role.replace('_', ' ')}
-                            </span>
-                          </div>
+                <div className="flex-1 overflow-hidden">
+                  {isMultiSelect ? (
+                    /* Multi-Select UI */
+                    <div className="h-full flex flex-col">
+                      <div className="flex justify-between items-center mb-3">
+                        <label className={`text-sm font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-700'}`}>
+                          {filteredUsers.length} user(s) &bull; {selectedUserIds.length} selected
                         </label>
-                      )) : (
-                        <div className="p-8 text-center">
-                          <Users className="w-12 h-12 mx-auto mb-3 text-[#9da8b9]" />
-                          <p className="text-[#9da8b9] font-medium">No users found</p>
-                          <p className="text-sm text-[#9da8b9] mt-1">Try adjusting your search or filters</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  /* Single Select UI - Improved */
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-3">
-                      Select User *
-                    </label>
-                    {filteredUsers.length > 0 ? (
-                      <div className="border border-[#282f39] rounded-[0.125rem] max-h-96 overflow-y-auto bg-[#111418]">
-                        {filteredUsers.map((u) => (
+                        <button
+                          type="button"
+                          onClick={toggleSelectAll}
+                          className={`text-sm font-medium hover:underline ${theme === 'dark' ? 'text-[#136dec] hover:text-[#1158c7]' : 'text-blue-600 hover:text-blue-700'}`}
+                        >
+                          {selectedUserIds.length === filteredUsers.length && filteredUsers.length > 0 ? 'Deselect All' : 'Select All'}
+                        </button>
+                      </div>
+                      <div className={`border rounded-lg max-h-80 overflow-y-auto ${
+                        theme === 'dark' ? 'bg-[#111418] border-[#282f39]' : 'bg-gray-50 border-gray-200'
+                      }`}>
+                        {filteredUsers.length > 0 ? filteredUsers.map((u) => (
                           <label
-                            key={u._id}
-                            className="flex items-center p-4 hover:bg-[#1c2027] cursor-pointer border-b border-[#282f39] last:border-b-0 transition-colors group"
+                            key={u.id}
+                            className={`flex items-center p-4 cursor-pointer border-b transition-colors ${
+                              theme === 'dark' 
+                                ? 'border-[#282f39] hover:bg-[#1c2027]' 
+                                : 'border-gray-200 hover:bg-white'
+                            } last:border-b-0`}
                           >
                             <input
-                              type="radio"
-                              name="selectedUser"
-                              value={u._id}
-                              checked={selectedUserId === u._id}
-                              onChange={(e) => setSelectedUserId(e.target.value)}
-                              className="w-5 h-5 text-[#136dec] focus:ring-[#136dec] mr-4 cursor-pointer"
+                              type="checkbox"
+                              checked={selectedUserIds.includes(u.id)}
+                              onChange={() => toggleUserSelection(u.id)}
+                              className="w-5 h-5 text-[#136dec] rounded focus:ring-[#136dec] mr-4 cursor-pointer"
                             />
                             <div className="flex-1 min-w-0">
-                              <div className="font-semibold text-white group-hover:text-[#136dec] transition-colors">{u.full_name}</div>
-                              <div className="text-sm text-[#9da8b9] truncate">
+                              <div className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{u.full_name}</div>
+                              <div className={`text-sm truncate ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-500'}`}>
                                 {u.email}
                               </div>
                             </div>
-                            <div className="ml-3">
-                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-[#282f39] text-[#9da8b9] capitalize">
+                            <span className={`ml-3 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium capitalize ${
+                              theme === 'dark' ? 'bg-[#282f39] text-[#9da8b9]' : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {u.role.replace('_', ' ')}
+                            </span>
+                          </label>
+                        )) : (
+                          <div className="p-8 text-center">
+                            <Users className={`w-12 h-12 mx-auto mb-3 ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-400'}`} />
+                            <p className={`font-medium ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-600'}`}>No users found</p>
+                            <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-500'}`}>Try adjusting your search or filters</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    /* Single Select UI */
+                    <div className="h-full flex flex-col">
+                      <label className={`block text-sm font-medium mb-3 ${theme === 'dark' ? 'text-white' : 'text-gray-700'}`}>
+                        Select User *
+                      </label>
+                      {filteredUsers.length > 0 ? (
+                        <div className={`border rounded-lg max-h-80 overflow-y-auto ${
+                          theme === 'dark' ? 'bg-[#111418] border-[#282f39]' : 'bg-gray-50 border-gray-200'
+                        }`}>
+                          {filteredUsers.map((u) => (
+                            <label
+                              key={u._id}
+                              className={`flex items-center p-4 cursor-pointer border-b transition-colors ${
+                                theme === 'dark' 
+                                  ? 'border-[#282f39] hover:bg-[#1c2027]' 
+                                  : 'border-gray-200 hover:bg-white'
+                              } last:border-b-0`}
+                            >
+                              <input
+                                type="radio"
+                                name="selectedUser"
+                                value={u._id}
+                                checked={selectedUserId === u._id}
+                                onChange={(e) => setSelectedUserId(e.target.value)}
+                                className="w-5 h-5 text-[#136dec] focus:ring-[#136dec] mr-4 cursor-pointer"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{u.full_name}</div>
+                                <div className={`text-sm truncate ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-500'}`}>
+                                  {u.email}
+                                </div>
+                              </div>
+                              <span className={`ml-3 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium capitalize ${
+                                theme === 'dark' ? 'bg-[#282f39] text-[#9da8b9]' : 'bg-gray-100 text-gray-600'
+                              }`}>
                                 {u.role.replace('_', ' ')}
                               </span>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="border border-[#282f39] rounded-[0.125rem] p-8 text-center bg-[#111418]">
-                        <Users className="w-12 h-12 mx-auto mb-3 text-[#9da8b9]" />
-                        <p className="text-[#9da8b9] font-medium">No users found</p>
-                        <p className="text-sm text-[#9da8b9] mt-1">Try adjusting your search or filters</p>
-                      </div>
-                    )}
-                  </div>
-                )}
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className={`border rounded-lg p-8 text-center ${
+                          theme === 'dark' ? 'bg-[#111418] border-[#282f39]' : 'bg-gray-50 border-gray-200'
+                        }`}>
+                          <Users className={`w-12 h-12 mx-auto mb-3 ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-400'}`} />
+                          <p className={`font-medium ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-600'}`}>No users found</p>
+                          <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-[#9da8b9]' : 'text-gray-500'}`}>Try adjusting your search or filters</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-              <div className="flex justify-end space-x-4 pt-6 border-t border-[#282f39] mt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddMemberModal(false);
-                    setIsMultiSelect(false);
-                    setSelectedUserIds([]);
-                    setSelectedUserId('');
-                    setSearchQuery('');
-                    setRoleFilter('all');
-                  }}
-                  className="px-5 py-2.5 bg-[#282f39] text-white rounded-[0.125rem] hover:bg-[#3e454f] transition-colors font-medium"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit" 
-                  className="px-5 py-2.5 bg-[#136dec] text-white rounded-[0.125rem] hover:bg-[#1158c7] transition-colors font-medium shadow-lg shadow-[#136dec]/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" 
-                  data-testid="submit-add-member"
-                  disabled={isMultiSelect ? selectedUserIds.length === 0 : !selectedUserId}
-                >
-                  <UserPlus className="w-4 h-4" />
-                  {isMultiSelect 
-                    ? `Add ${selectedUserIds.length} Member${selectedUserIds.length !== 1 ? 's' : ''}`
-                    : 'Add Member'}
-                </button>
-              </div>
-            </form>
+                <div className={`flex gap-3 justify-end pt-4 border-t ${theme === 'dark' ? 'border-[#282f39]' : 'border-gray-200'}`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddMemberModal(false);
+                      setIsMultiSelect(false);
+                      setSelectedUserIds([]);
+                      setSelectedUserId('');
+                      setSearchQuery('');
+                      setRoleFilter('all');
+                    }}
+                    className={`px-5 py-2.5 rounded-lg font-medium text-sm transition-colors ${
+                      theme === 'dark' 
+                        ? 'bg-[#282f39] text-white hover:bg-[#3e454f]' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="px-5 py-2.5 bg-[#136dec] text-white rounded-lg font-medium text-sm hover:bg-[#1158c7] transition-colors shadow-lg shadow-[#136dec]/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" 
+                    data-testid="submit-add-member"
+                    disabled={isMultiSelect ? selectedUserIds.length === 0 : !selectedUserId}
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    {isMultiSelect 
+                      ? `Add ${selectedUserIds.length} Member${selectedUserIds.length !== 1 ? 's' : ''}`
+                      : 'Add Member'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      );
+        );
       })()}
 
       {/* Confirm Modal */}

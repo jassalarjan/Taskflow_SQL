@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -8,7 +8,6 @@ import Sidebar from '../components/Sidebar';
 import ThemeToggle from '../components/ThemeToggle';
 import NotificationSettings from '../components/NotificationSettings';
 import SessionSettings from '../components/SessionSettings';
-
 import ConfirmModal from '../components/modals/ConfirmModal';
 import api from '../api/axios';
 import { User, Settings as SettingsIcon, Palette, Monitor, Lock, Eye, EyeOff, Bell, AlertCircle, Camera, Trash2, Upload, AlertTriangle, Menu, Download, CheckCircle2, XCircle } from 'lucide-react';

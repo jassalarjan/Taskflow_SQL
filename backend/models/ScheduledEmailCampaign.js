@@ -3,8 +3,8 @@ import { sequelize } from '../config/db.js';
 
 const ScheduledEmailCampaign = sequelize.define('ScheduledEmailCampaign', {
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
+    type: DataTypes.BIGINT.UNSIGNED,
+    autoIncrement: true,
     primaryKey: true
   },
   title: {
@@ -16,7 +16,7 @@ const ScheduledEmailCampaign = sequelize.define('ScheduledEmailCampaign', {
     defaultValue: ''
   },
   workspaceId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'Workspaces',
@@ -24,7 +24,7 @@ const ScheduledEmailCampaign = sequelize.define('ScheduledEmailCampaign', {
     }
   },
   createdBy: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'Users',
@@ -32,7 +32,7 @@ const ScheduledEmailCampaign = sequelize.define('ScheduledEmailCampaign', {
     }
   },
   templateId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'EmailTemplates',

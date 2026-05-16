@@ -3,8 +3,8 @@ import { sequelize } from '../config/db.js';
 
 const RevokedToken = sequelize.define('RevokedToken', {
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
+    type: DataTypes.BIGINT.UNSIGNED,
+    autoIncrement: true,
     primaryKey: true
   },
   jti: {
@@ -18,7 +18,7 @@ const RevokedToken = sequelize.define('RevokedToken', {
     allowNull: false
   },
   userId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: true,
     references: {
       model: 'Users',

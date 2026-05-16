@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { motion, useScroll, useTransform, useSpring, useMotionValue, useVelocity, useAnimationFrame } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";

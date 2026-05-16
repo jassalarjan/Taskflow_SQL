@@ -3,12 +3,12 @@ import { sequelize } from '../config/db.js';
 
 const LeaveBalance = sequelize.define('LeaveBalance', {
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
+    type: DataTypes.BIGINT.UNSIGNED,
+    autoIncrement: true,
     primaryKey: true
   },
   userId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'Users',
@@ -16,7 +16,7 @@ const LeaveBalance = sequelize.define('LeaveBalance', {
     }
   },
   workspaceId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'Workspaces',
@@ -24,7 +24,7 @@ const LeaveBalance = sequelize.define('LeaveBalance', {
     }
   },
   leaveTypeId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'LeaveTypes',

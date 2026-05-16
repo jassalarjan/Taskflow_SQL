@@ -3,12 +3,12 @@ import { sequelize } from '../config/db.js';
 
 const LeaveType = sequelize.define('LeaveType', {
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
+    type: DataTypes.BIGINT.UNSIGNED,
+    autoIncrement: true,
     primaryKey: true
   },
   workspaceId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'Workspaces',

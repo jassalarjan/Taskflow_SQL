@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -23,7 +23,6 @@ import {
   ChevronUp,
   LogOut,
   User as UserIcon,
-  Building2,
   X,
   Clock,
   CalendarDays,
@@ -37,7 +36,7 @@ import {
 const Sidebar = () => {
   const { user, logout } = useAuth();
   const { theme, currentTheme } = useTheme();
-  // Dropdown state management from context
+  const { allWorkspaces, fetchAllWorkspaces } = useWorkspace();
   const {
     isMobileOpen,
     isMobile,
@@ -47,7 +46,6 @@ const Sidebar = () => {
     openDropdowns,
     toggleDropdown
   } = useSidebar();
-  const { workspace, allWorkspaces, switchWorkspace, fetchAllWorkspaces } = useWorkspace();
   const navigate = useNavigate();
   const location = useLocation();
   const confirmModal = useConfirmModal();
@@ -103,21 +101,19 @@ const Sidebar = () => {
   ];
 
   const hrMenuItems = [
-    { path: '/hr/dashboard', icon: LayoutDashboard, label: 'HR Dashboard', roles: ['admin', 'hr'], coreWorkspaceOnly: true },
-    { path: '/hr/attendance', icon: Clock, label: 'Attendance', roles: ['admin', 'hr'], coreWorkspaceOnly: true },
-    { path: '/hr/leaves', icon: CalendarDays, label: 'Leave Management', roles: ['admin', 'hr', 'team_lead', 'member'], coreWorkspaceOnly: true },
-    { path: '/hr/calendar', icon: Calendar, label: 'HR Calendar', roles: ['admin', 'hr'], coreWorkspaceOnly: true },
-    { path: '/hr/email-center', icon: FileText, label: 'Email Center', roles: ['admin', 'hr'], coreWorkspaceOnly: true },
-    { path: '/email-automation', icon: Zap, label: 'Email Automation', roles: ['admin', 'hr'], coreWorkspaceOnly: true },
-    { path: '/scheduled-campaigns', icon: Send, label: 'Scheduled Campaigns', roles: ['admin', 'hr'], coreWorkspaceOnly: true },
+    { path: '/hr/dashboard', icon: LayoutDashboard, label: 'HR Dashboard', roles: ['admin', 'hr'] },
+    { path: '/hr/attendance', icon: Clock, label: 'Attendance', roles: ['admin', 'hr'] },
+    { path: '/hr/leaves', icon: CalendarDays, label: 'Leave Management', roles: ['admin', 'hr', 'team_lead', 'member'] },
+    { path: '/hr/calendar', icon: Calendar, label: 'HR Calendar', roles: ['admin', 'hr'] },
+    { path: '/hr/email-center', icon: FileText, label: 'Email Center', roles: ['admin', 'hr'] },
+    { path: '/email-automation', icon: Zap, label: 'Email Automation', roles: ['admin', 'hr'] },
+    { path: '/scheduled-campaigns', icon: Send, label: 'Scheduled Campaigns', roles: ['admin', 'hr'] },
     { path: '/teams', icon: Users, label: 'Teams', roles: ['admin', 'hr', 'team_lead', 'community_admin'] },
     { path: '/users', icon: UserCog, label: 'User Management', roles: ['admin', 'hr', 'community_admin'] },
   ];
 
   const adminMenuItems = [
-    { path: '/community-users', icon: UserCog, label: 'Community Users', roles: ['community_admin'] },
-    { path: '/workspaces', icon: Building2, label: 'Workspaces', roles: ['admin'] },
-    { path: '/changelog', icon: FileText, label: 'Audit Logs', roles: ['admin'], coreWorkspaceOnly: true },
+    { path: '/changelog', icon: FileText, label: 'Audit Logs', roles: ['admin'] },
   ];
 
   const bottomMenuItems = [
@@ -127,19 +123,7 @@ const Sidebar = () => {
 
   const canAccess = (item) => {
     if (!item.roles) return true;
-    if (!item.roles.includes(user?.role)) return false;
-
-    // If systemAdminOnly, check if user is a system admin
-    if (item.systemAdminOnly) {
-      return user?.isSystemAdmin || (!user?.workspaceId && user?.role === 'admin');
-    }
-
-    // Check workspace type restrictions for HR features
-    if (item.coreWorkspaceOnly && workspace?.type !== 'CORE') {
-      return false;
-    }
-
-    return true;
+    return item.roles.includes(user?.role);
   };
 
   const isDark = theme === 'dark';
@@ -355,155 +339,7 @@ const Sidebar = () => {
         )}
       </div>
 
-      {/* Workspace Info & Switcher */}
-      {!isCollapsed && (
-        <div className={`p-2 border-t hidden lg:block ${
-          isDark ? 'border-[#282f39]' : 'border-gray-200'
-        }`}>
-          <div className="px-2 py-1.5">
-            <div className="flex items-center justify-between mb-2">
-              <p className={`text-xs font-bold uppercase tracking-wider ${
-                isDark ? 'text-[#9da8b9]' : 'text-gray-500'
-              }`}>Workspace</p>
-              {allWorkspaces.length > 1 && (
-                <button
-                  onClick={() => toggleDropdown('workspaces')}
-                  className={`text-xs ${isDark ? 'text-[#9da8b9] hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
-                  title="Switch workspace"
-                >
-                  {getDropdownState('workspaces', false) ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                </button>
-              )}
-            </div>
-            
-            {/* Current Workspace Display */}
-            {workspace?.name && (
-              <div className={`flex items-center gap-2 text-sm font-medium mb-2 p-2 rounded ${
-                isDark ? 'bg-[#1c2027] text-white' : 'bg-gray-100 text-gray-900'
-              }`}>
-                <div className={`size-6 rounded flex items-center justify-center text-[10px] text-white font-bold ${
-                  workspace.type === 'CORE' 
-                    ? 'bg-gradient-to-br from-blue-500 to-cyan-500' 
-                    : 'bg-gradient-to-br from-teal-500 to-emerald-500'
-                }`}>
-                  {getUserInitials(workspace.name)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="truncate block">{workspace.name}</span>
-                  <span className={`text-[10px] ${isDark ? 'text-[#9da8b9]' : 'text-gray-500'}`}>
-                    {workspace.type === 'COMMUNITY' ? 'Community' : 'Core'} Workspace
-                  </span>
-                </div>
-              </div>
-            )}
-            
-            {/* Workspace Switcher Dropdown */}
-            {allWorkspaces.length > 1 && getDropdownState('workspaces', false) && (
-              <div className={`mb-2 rounded overflow-hidden ${
-                isDark ? 'bg-[#111418]' : 'bg-white border border-gray-200'
-              }`}>
-                <div className={`text-[10px] font-semibold uppercase px-2 py-1.5 ${
-                  isDark ? 'text-[#9da8b9] bg-[#1c2027]' : 'text-gray-500 bg-gray-50'
-                }`}>
-                  Available Workspaces
-                </div>
-                {allWorkspaces.map((ws) => (
-                  <button
-                    key={ws.id}
-                    onClick={async () => {
-                      if (ws.id !== workspace?.id) {
-                        const success = await switchWorkspace(ws.id);
-                        if (success) {
-                          toggleDropdown('workspaces');
-                        }
-                      }
-                    }}
-                    disabled={ws.id === workspace?.id}
-                    className={`w-full flex items-center gap-2 px-2 py-2 text-left transition-colors ${
-                      ws.id === workspace?.id
-                        ? isDark 
-                          ? 'bg-[#136dec]/10 text-[#136dec] cursor-default' 
-                          : 'bg-blue-50 text-blue-600 cursor-default'
-                        : isDark
-                          ? 'hover:bg-[#1c2027] text-[#9da8b9] hover:text-white'
-                          : 'hover:bg-gray-50 text-gray-700 hover:text-gray-900'
-                    }`}
-                  >
-                    <div className={`size-5 rounded flex items-center justify-center text-[9px] text-white font-bold ${
-                      ws.type === 'CORE' 
-                        ? 'bg-gradient-to-br from-blue-500 to-cyan-500' 
-                        : 'bg-gradient-to-br from-teal-500 to-emerald-500'
-                    }`}>
-                      {getUserInitials(ws.name)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs truncate">{ws.name}</span>
-                        {ws.id === workspace?.id && (
-                          <span className="text-[9px]">✓</span>
-                        )}
-                      </div>
-                      <span className={`text-[9px] ${
-                        ws.id === workspace?.id
-                          ? isDark ? 'text-[#136dec]/70' : 'text-blue-500'
-                          : isDark ? 'text-[#9da8b9]' : 'text-gray-500'
-                      }`}>
-                        {ws.type} • {ws.role}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-            
-            {/* Legacy team display for users without multi-workspace */}
-            {(!workspace?.name && user?.team_id) && (
-              <div className={`flex items-center gap-2 text-sm font-medium ${
-                isDark ? 'text-white' : 'text-gray-900'
-              }`}>
-                <div className="size-6 rounded bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center text-[10px] text-white font-bold">
-                  {getUserInitials(user.team_id.name)}
-                </div>
-                <span className="truncate">{user.team_id.name}</span>
-              </div>
-            )}
-            
-            {/* Admin or no workspace display */}
-            {!workspace?.name && !user?.team_id && (
-              <div className={`flex items-center gap-2 text-sm ${
-                isDark ? 'text-[#9da8b9]' : 'text-gray-600'
-              }`}>
-                {user?.role === 'admin' ? (
-                  <>
-                    <div className="size-6 rounded bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-[10px] text-white font-bold">
-                      A
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-xs font-medium">Admin - All Teams</p>
-                      <button 
-                        onClick={() => navigate('/teams')}
-                        className="text-[10px] text-[#136dec] hover:underline mt-0.5"
-                      >
-                        Manage Teams →
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="size-6 rounded bg-gradient-to-br from-gray-400 to-gray-500 flex items-center justify-center text-[10px] text-white font-bold">
-                      ?
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-xs font-medium">No Team Assigned</p>
-                      <p className="text-[10px] mt-0.5">Contact your admin</p>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      
 
       {/* User Profile & Actions */}
       <div className={`border-t ${

@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
-import mongoose from 'mongoose';
-import connectDB from '../config/db.js';
+import bcrypt from 'bcryptjs';
+import connectDB, { sequelize } from '../config/db.js';
 import User from '../models/User.js';
 
 dotenv.config();
@@ -8,31 +8,31 @@ dotenv.config();
 async function run() {
   try {
     await connectDB();
-    const fullName = process.env.ADMIN_FULL_NAME || 'System Admin';
-    const email = process.env.ADMIN_EMAIL || 'admin@example.com';
-    const password = process.env.ADMIN_PASSWORD || 'ChangeMe123!';
 
-    let user = await User.findOne({ email });
-    if (user) {
-      
-      process.exit(0);
+    const fullName = process.env.ADMIN_FULL_NAME || 'Arjan Singh Jassal';
+    const email = (process.env.ADMIN_EMAIL || 'jassalarjansingh@gmail.com').toLowerCase();
+    const password = process.env.ADMIN_PASSWORD || 'waheguru';
+
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      console.log(`Admin user already exists: ${email}`);
+      return;
     }
 
-    user = new User({
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({
       full_name: fullName,
       email,
-      password_hash: password,
+      password: hashedPassword,
       role: 'admin',
     });
 
-    await user.save();
-    
-    process.exit(0);
-  } catch (err) {
-    
-    process.exit(1);
+    console.log('Admin user created:', { id: user.id, email });
+  } catch (error) {
+    console.error('Failed to seed admin user:', error);
+    process.exitCode = 1;
   } finally {
-    await mongoose.connection.close();
+    await sequelize.close();
   }
 }
 

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { Lock, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';

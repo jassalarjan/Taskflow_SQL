@@ -1,43 +1,41 @@
 import { Sequelize } from 'sequelize';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const sequelize = new Sequelize(
-  process.env.DB_NAME || 'taskflow_db',
-  process.env.DB_USER || 'root',
-  process.env.DB_PASSWORD || '',
-  {
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 3306,
-    dialect: 'mysql',
-    logging: process.env.NODE_ENV === 'production' ? false : console.log,
-    pool: {
-      max: 5,
-      min: 0,
-      acquire: 30000,
-      idle: 10000
-    },
-    timezone: '+00:00'
-  }
-);
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
+const dbHost = process.env.MYSQL_HOST || process.env.DB_HOST || '127.0.0.1';
+const dbPort = Number(process.env.MYSQL_PORT || process.env.DB_PORT || 3306);
+const dbName = process.env.MYSQL_DATABASE || process.env.DB_NAME || 'taskflow';
+const dbUser = process.env.MYSQL_USER || process.env.DB_USER || 'root';
+const dbPass = process.env.MYSQL_PASSWORD || process.env.DB_PASSWORD || '';
+
+const sequelize = new Sequelize(dbName, dbUser, dbPass, {
+  host: dbHost,
+  port: dbPort,
+  dialect: 'mysql',
+  logging: false,
+  pool: {
+    max: 10,
+    min: 0,
+    acquire: 30000,
+    idle: 10000,
+  },
+});
 
 const connectDB = async () => {
   try {
     await sequelize.authenticate();
-    console.log('✓ MySQL connection established successfully');
-
-    // Schema sync is opt-in so normal restarts do not keep altering tables.
-    // Use SYNC_DB_ON_START=true when you explicitly want Sequelize to reconcile models.
-    if (process.env.SYNC_DB_ON_START === 'true') {
-      const shouldAlter = process.env.SYNC_DB_ALTER === 'true';
-      await sequelize.sync({ alter: shouldAlter });
-      console.log(`✓ Database models synced${shouldAlter ? ' with alter' : ''}`);
-    }
+    console.log(`Connected to MySQL at ${dbHost}:${dbPort} (database: ${dbName})`);
   } catch (error) {
-    console.error('✗ Unable to connect to MySQL database:', error.message);
+    console.error('MySQL connection error:', error);
     process.exit(1);
   }
 };
 
 export { sequelize, connectDB };
+export default connectDB;

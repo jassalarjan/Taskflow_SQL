@@ -3,8 +3,8 @@ import { sequelize } from '../config/db.js';
 
 const Workspace = sequelize.define('Workspace', {
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
+    type: DataTypes.BIGINT.UNSIGNED,
+    autoIncrement: true,
     primaryKey: true
   },
   name: {
@@ -17,7 +17,7 @@ const Workspace = sequelize.define('Workspace', {
     allowNull: false
   },
   owner: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: true,
     references: {
       model: 'Users',

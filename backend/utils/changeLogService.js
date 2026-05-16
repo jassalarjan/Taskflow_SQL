@@ -2,10 +2,6 @@
 import ChangeLog from '../models/ChangeLog.js';
 import User from '../models/User.js';
 
-/**
- * Create a change log entry
- * WORKSPACE SUPPORT: Now accepts workspaceId parameter
- */
 export const logChange = async (params) => {
   try {
     let logData = {};
@@ -24,11 +20,10 @@ export const logChange = async (params) => {
         action: params.action,
         description: params.description,
         metadata: params.metadata || {},
-        changes: params.changes || {},
-        workspaceId: params.workspaceId
+        changes: params.changes || {}
       };
     } else {
-      const { userId, workspaceId, action, entity, entityId, details, ipAddress } = params;
+      const { userId, action, entity, entityId, details, ipAddress } = params;
 
       const eventTypeMap = {
         attendance: 'user_action',
@@ -38,8 +33,7 @@ export const logChange = async (params) => {
         email_template: 'email_action',
         user: 'user_action',
         task: 'task_action',
-        team: 'team_action',
-        workspace: 'workspace_action'
+        team: 'team_action'
       };
 
       logData = {
@@ -50,8 +44,7 @@ export const logChange = async (params) => {
         target_id: entityId,
         action: action,
         description: `${action} ${entity}: ${JSON.stringify(details || {})}`,
-        metadata: details || {},
-        workspaceId: workspaceId
+        metadata: details || {}
       };
     }
 
@@ -61,10 +54,6 @@ export const logChange = async (params) => {
   }
 };
 
-/**
- * Get change logs with filters and pagination
- * WORKSPACE SUPPORT: Now requires workspaceId parameter (or includeAllWorkspaces for system admins)
- */
 export const getChangeLogs = async ({
   page = 1,
   limit = 50,
@@ -73,16 +62,10 @@ export const getChangeLogs = async ({
   target_type,
   start_date,
   end_date,
-  search,
-  workspaceId,
-  includeAllWorkspaces = false  // For system admins to view all logs
+  search
 }) => {
   try {
     const where = {};
-    
-    if (!includeAllWorkspaces) {
-      where.workspaceId = workspaceId;
-    }
 
     if (event_type) {
       where.event_type = event_type;
@@ -143,9 +126,6 @@ export const getChangeLogs = async ({
   }
 };
 
-/**
- * Get change log statistics
- */
 export const getChangeLogStats = async ({ start_date, end_date }) => {
   try {
     const where = {};
@@ -197,9 +177,6 @@ export const getChangeLogStats = async ({ start_date, end_date }) => {
   }
 };
 
-/**
- * Export change logs to CSV format
- */
 export const exportChangeLogs = async (query) => {
   try {
     const logs = await ChangeLog.findAll({

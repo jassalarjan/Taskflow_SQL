@@ -1,170 +1,53 @@
-﻿import express from 'express';
-import crypto from 'crypto';
-import { randomUUID } from 'crypto';
+import express from 'express';
 import { body, validationResult } from 'express-validator';
+import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
-import Workspace from '../models/Workspace.js';
 import {
-  blacklistToken,
   blacklistTokenByValue,
   generateAccessToken,
   generateRefreshToken,
   isTokenBlacklisted,
+  verifyAccessToken,
   verifyRefreshToken,
 } from '../utils/jwt.js';
-import { logChange } from '../utils/changeLogService.js';
-import { authenticate } from '../middleware/auth.js';
-import getClientIP from '../utils/getClientIP.js';
-import { sendVerificationEmail, sendPasswordResetLink } from '../utils/emailService.js';
-import { 
-  recordFailedLogin, 
-  clearFailedLoginAttempts, 
-  isIPBlocked, 
-  getIPBlockStatus,
-  securityLogger,
-  validatePasswordStrength,
-  recordSuspiciousActivity
-} from '../utils/security.js';
-import { isValidObjectIdString } from '../utils/requestValidation.js';
 
 const router = express.Router();
 
-// Validation middleware - Strong password requirements
-const validateRegistration = [
-  body('full_name').trim().notEmpty().withMessage('Full name is required'),
-  body('email').isEmail().withMessage('Valid email is required'),
-  body('password').custom((value, { req }) => {
-    const validation = validatePasswordStrength(value);
-    if (!validation.isValid) {
-      throw new Error(validation.errors.join('. '));
-    }
-    return true;
-  })
-];
+const tokenCookieOptions = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+  path: '/',
+};
+
+const serializeUser = (user) => {
+  if (!user) return null;
+  const plain = typeof user.toJSON === 'function' ? user.toJSON() : user;
+  const { password, ...safeUser } = plain;
+  
+  // System admin: admin users with no workspace
+  const isSystemAdmin = safeUser.role === 'admin' && !safeUser.workspaceId && !safeUser.currentWorkspaceId;
+  
+  return {
+    ...safeUser,
+    id: safeUser.id,
+    _id: safeUser.id,
+    isSystemAdmin,
+    workspace: null,
+    workspaces: [],
+  };
+};
 
 const validateLogin = [
   body('email').isEmail().withMessage('Valid email is required'),
-  body('password').notEmpty().withMessage('Password is required')
+  body('password').notEmpty().withMessage('Password is required'),
 ];
 
-// Public registration is disabled
-// Users can only be created by Admin or HR through the user management system
-router.post('/register', (req, res) => {
-  res.status(403).json({ 
-    message: 'Public registration is disabled. Please contact your administrator to create an account.' 
-  });
+router.post('/register', (_req, res) => {
+  res.status(403).json({ message: 'Public registration is disabled.' });
 });
 
-// WORKSPACE SUPPORT: Community workspace registration
-// Creates a new COMMUNITY workspace with an admin user
-router.post('/register-community', [
-  body('workspace_name').trim().notEmpty().withMessage('Workspace name is required'),
-  body('full_name').trim().notEmpty().withMessage('Full name is required'),
-  body('email').isEmail().withMessage('Valid email is required'),
-  body('password').custom((value, { req }) => {
-    const validation = validatePasswordStrength(value);
-    if (!validation.isValid) {
-      throw new Error(validation.errors.join('. '));
-    }
-    return true;
-  })
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { workspace_name, full_name, email, password } = req.body;
-
-    // Check if user with this email already exists (across all workspaces)
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ 
-        message: 'A user with this email already exists' 
-      });
-    }
-
-    // Create temporary user ID for workspace creation
-    const tempUserId = randomUUID();
-
-    // Create COMMUNITY workspace
-    const workspace = new Workspace({
-      name: workspace_name,
-      type: 'COMMUNITY',
-      owner: tempUserId,
-      isActive: true,
-      // Default COMMUNITY settings and limits are set by pre-save hook
-    });
-
-    await workspace.save();
-
-    // Generate 6-digit verification code
-    const verificationCode = crypto.randomInt(100000, 999999).toString();
-    const verificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-    // Create community admin user for this workspace (NOT VERIFIED YET)
-    const user = new User({
-      _id: tempUserId,
-      full_name,
-      email,
-      password_hash: password, // Will be hashed by pre-save hook
-      role: 'community_admin',
-      workspaceId: workspace._id,
-      team_id: null,
-      isEmailVerified: false,
-      verificationToken: verificationCode,
-      verificationTokenExpiry: verificationExpiry,
-    });
-
-    await user.save();
-
-    // Update workspace usage
-    workspace.usage.userCount = 1;
-    await workspace.save();
-
-    // Send verification email (async, doesn't block response)
-    await sendVerificationEmail(full_name, email, verificationCode, password, workspace_name);
-
-    // Log workspace creation
-    await logChange({
-      event_type: 'system_event',
-      user: user,
-      user_ip: getClientIP(req),
-      action: 'Community workspace created',
-      description: `New COMMUNITY workspace "${workspace_name}" created by ${full_name} - awaiting email verification`,
-      metadata: {
-        workspaceId: workspace._id,
-        workspaceType: 'COMMUNITY',
-        workspaceName: workspace_name,
-        emailVerificationRequired: true,
-      },
-      workspaceId: workspace._id,
-    });
-
-    res.status(201).json({
-      message: 'Community workspace created! Please check your email to verify your account.',
-      requiresVerification: true,
-      email: email,
-      workspace: {
-        id: workspace._id,
-        name: workspace.name,
-        type: workspace.type,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      message: 'Failed to create community workspace', 
-      error: error.message 
-    });
-  }
-});
-
-// Login
 router.post('/login', validateLogin, async (req, res) => {
-  const { rememberMe = false, sessionTimeout = 24 } = req.body;
-  // Validate session timeout (1 hour to 30 days)
-  const validTimeout = Math.max(1, Math.min(720, sessionTimeout || 24));
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -173,750 +56,111 @@ router.post('/login', validateLogin, async (req, res) => {
 
     const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '');
-    const clientIP = getClientIP(req);
+    const rememberMe = Boolean(req.body.rememberMe);
+    const sessionTimeout = Number(req.body.sessionTimeout || 24);
 
-    // Check if IP is blocked
-    if (await isIPBlocked(clientIP)) {
-      const blockStatus = await getIPBlockStatus(clientIP);
-      securityLogger('blocked_ip_login_attempt', {
-        ip: clientIP,
-        email,
-        blockedUntil: blockStatus.blockedUntil
-      });
-      return res.status(429).json({ 
-        message: 'Too many failed login attempts. Please try again later.',
-        blockedUntil: blockStatus.blockedUntil
-      });
-    }
-
-    // Find user by email using Sequelize
-    const user = await User.findOne({
-      where: { email }
-    });
-    
+    const user = await User.findOne({ where: { email } });
     if (!user) {
-      // Record failed attempt even if user doesn't exist (prevent email enumeration timing)
-      await recordFailedLogin(clientIP, email);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Check if user is deactivated
-    if (user.employmentStatus === 'INACTIVE') {
-      await recordFailedLogin(clientIP, email);
-      securityLogger('inactive_account_login_attempt', {
-        ip: clientIP,
-        email,
-        userId: user.id
-      });
-      return res.status(403).json({
-        message: 'Your account has been deactivated. Please contact your administrator for assistance.',
-        accountDeactivated: true
-      });
-    }
-
-    // Check if email is verified (only for community admins)
-    if (user.role === 'community_admin' && !user.isEmailVerified) {
-      await recordFailedLogin(clientIP, email);
-      return res.status(403).json({
-        message: 'Please verify your email address before logging in. Check your inbox for the verification code.',
-        requiresVerification: true,
-        email: user.email
-      });
-    }
-
-    // SYSTEM ADMIN: Admins and community_admins can have special handling
-    // Regular users must have workspace
-    let activeWorkspaceId = user.currentWorkspaceId || user.workspaceId || null;
-    let activeWorkspace = null;
-    
-    if (!activeWorkspaceId) {
-      if (user.role !== 'admin' && user.role !== 'community_admin') {
-        return res.status(403).json({ 
-          message: 'Your account is not associated with any workspace. Please contact support.' 
-        });
-      }
-      // Admin without workspace = system admin, continue login
-      // Community admin without workspace = edge case, allow login
-    } else {
-      activeWorkspace = await Workspace.findByPk(activeWorkspaceId);
-      
-      // Check if workspace is active (default to true if not set)
-      if (activeWorkspace && activeWorkspace.isActive === false) {
-        return res.status(403).json({ 
-          message: 'Your workspace has been deactivated. Please contact support.',
-          workspaceId: activeWorkspace.id,
-          workspaceName: activeWorkspace.name
-        });
-      }
-    }
-    
-    // Get all user workspaces for multi-workspace support
-    const allWorkspaces = [];
-    
-    // ADMIN/SUPER ADMIN: Get all workspaces
-    if (user.role === 'admin') {
-      const allAvailableWorkspaces = await Workspace.findAll({
-        where: { isActive: true },
-        attributes: ['id', 'name', 'type', 'settings'],
-        raw: true
-      });
-
-      for (const wsData of allAvailableWorkspaces) {
-        allWorkspaces.push({
-          id: wsData.id,
-          name: wsData.name,
-          type: wsData.type,
-          role: 'admin', // Admin role in all workspaces
-          features: wsData.settings?.features || {}
-        });
-      }
-    } else if (activeWorkspace) {
-      // Legacy single workspace support
-      allWorkspaces.push({
-        id: activeWorkspace.id,
-        name: activeWorkspace.name,
-        type: activeWorkspace.type,
-        role: user.role,
-        features: activeWorkspace.settings?.features || {}
-      });
-    }
-
-    // Check password
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      // Record failed login attempt
-      const failStatus = await recordFailedLogin(clientIP, email);
-      
-      securityLogger('failed_login', {
-        ip: clientIP,
-        email,
-        attempts: failStatus.attempts,
-        remainingAttempts: failStatus.remainingAttempts
-      });
-      
-      // Check if this attempt triggered a block
-      if (failStatus.isBlocked) {
-        await recordSuspiciousActivity(clientIP, 'multiple_failed_logins', {
-          email,
-          attempts: failStatus.attempts
-        });
-      }
-      
+    const passwordMatches = await bcrypt.compare(password, user.password);
+    if (!passwordMatches) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Clear failed login attempts on successful login
-    await clearFailedLoginAttempts(clientIP);
+    const accessToken = generateAccessToken(user.id, user.role);
+    const refreshToken = generateRefreshToken(user.id, null, rememberMe ? '30d' : `${Math.max(1, Math.min(sessionTimeout, 720))}h`);
 
-    // Generate tokens with IP for tracking
-    // If remember me, set refresh token to selected timeout, else default 24h
-    const refreshExpiry = rememberMe ? `${validTimeout}h` : undefined;
-    const accessToken = generateAccessToken(user.id, user.role, clientIP);
-    const refreshToken = generateRefreshToken(user.id, clientIP, refreshExpiry);
+    res.cookie('accessToken', accessToken, { ...tokenCookieOptions, maxAge: 60 * 60 * 1000 });
+    res.cookie('refreshToken', refreshToken, { ...tokenCookieOptions, maxAge: 30 * 24 * 60 * 60 * 1000 });
 
-    // Log login event
-    const user_ip = getClientIP(req);
-    await logChange({
-      event_type: 'user_login',
-      user: user,
-      user_ip,
-      action: 'User logged in',
-      description: `${user.full_name} (${user.email}) logged in successfully`,
-      metadata: {
-        role: user.role,
-        team_id: user.team_id,
-        currentWorkspaceId: activeWorkspaceId || null,
-        workspaceType: activeWorkspace?.type || 'SYSTEM',
-        isSystemAdmin: !activeWorkspaceId && user.role === 'admin',
-        totalWorkspaces: allWorkspaces.length
-      },
-      workspaceId: activeWorkspaceId || null,
-    });
-
-    // Set secure httpOnly cookies for tokens (production security)
-    const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
-    const cookieOptions = {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      path: '/'
-    };
-
-    res.cookie('accessToken', accessToken, cookieOptions);
-    res.cookie('refreshToken', refreshToken, cookieOptions);
-
-    res.json({
+    return res.json({
       message: 'Login successful',
-      user: {
-        id: user.id,
-        full_name: user.full_name,
-        email: user.email,
-        role: user.role,
-        profile_picture: user.profile_picture || null,
-        team_id: user.team_id,
-        workspaceId: activeWorkspaceId || null,
-        currentWorkspaceId: activeWorkspaceId || null,
-        isSystemAdmin: !activeWorkspaceId && user.role === 'admin',
-        joinedAt: user.createdAt
-      },
-      workspace: activeWorkspace ? {
-        id: activeWorkspace.id,
-        name: activeWorkspace.name,
-        type: activeWorkspace.type,
-        features: activeWorkspace.settings?.features || {},
-      } : null,
-      workspaces: allWorkspaces,
-      isSystemAdmin: !activeWorkspaceId && user.role === 'admin'
+      user: serializeUser(user),
+      workspace: null,
+      workspaces: [],
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    return res.status(500).json({ message: 'Login failed', error: error.message });
   }
 });
 
-// Refresh token - supports both body and cookie-based auth
 router.post('/refresh', async (req, res) => {
   try {
-    // Support refresh token from body (token-based) or cookies (cookie-based)
-    let refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
-    const clientIP = getClientIP(req);
-
+    const refreshToken = req.cookies?.refreshToken;
     if (!refreshToken) {
-      return res.status(400).json({ message: 'Refresh token required' });
+      return res.status(401).json({ message: 'Refresh token missing' });
     }
 
-    // Verify refresh token
-    const decoded = verifyRefreshToken(refreshToken, clientIP);
-    if (!decoded) {
-      securityLogger('invalid_refresh_token', {
-        ip: clientIP,
-        path: req.path
-      });
-      return res.status(401).json({ message: 'Invalid refresh token' });
+    const decoded = verifyRefreshToken(refreshToken);
+    if (!decoded || (decoded.jti && await isTokenBlacklisted(decoded.jti))) {
+      return res.status(401).json({ message: 'Invalid or expired refresh token' });
     }
 
-    if (decoded.jti && await isTokenBlacklisted(decoded.jti)) {
-      securityLogger('revoked_refresh_token', {
-        ip: clientIP,
-        userId: decoded.userId,
-        jti: decoded.jti
-      });
-      return res.status(401).json({ message: 'Refresh token has been revoked' });
-    }
-
-    // Get user with team and workspace populated
-    const user = await User.findById(decoded.userId)
-      .populate('team_id', 'name description')
-      .populate('teams', 'name')
-      .populate('workspaceId', 'name type settings');
-    
+    const user = await User.findByPk(decoded.userId);
     if (!user) {
-      securityLogger('refresh_user_not_found', {
-        ip: clientIP,
-        userId: decoded.userId
-      });
       return res.status(401).json({ message: 'User not found' });
     }
 
-    // SYSTEM ADMIN: Check workspace status only for non-admin users
-    if (user.workspaceId) {
-      if (!user.workspaceId.isActive) {
-        return res.status(403).json({ 
-          message: 'Workspace is not available' 
-        });
-      }
-    } else if (user.role !== 'admin') {
-      // Non-admin without workspace should not be allowed
-      return res.status(403).json({ 
-        message: 'Workspace is not available' 
-      });
-    }
+    const accessToken = generateAccessToken(user.id, user.role);
+    res.cookie('accessToken', accessToken, { ...tokenCookieOptions, maxAge: 60 * 60 * 1000 });
 
-    // Generate new tokens with IP for token rotation
-    const newAccessToken = generateAccessToken(user._id, user.role, clientIP);
-    const newRefreshToken = generateRefreshToken(user._id, clientIP);
-
-    await blacklistToken({
-      jti: decoded.jti,
-      tokenType: 'refresh',
-      userId: user._id,
-      expiresAt: new Date(decoded.exp * 1000),
-      reason: 'rotated'
-    });
-
-    // Log token refresh
-    securityLogger('token_refresh', {
-      userId: user._id,
-      email: user.email,
-      ip: clientIP
-    });
-
-    // Set secure httpOnly cookies for tokens (production security)
-    const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
-    const cookieOptions = {
-      httpOnly: true,
-      secure: true, // Always true for cross-site cookies to work
-      sameSite: 'none',
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      path: '/'
-    };
-
-    res.cookie('accessToken', newAccessToken, cookieOptions);
-    res.cookie('refreshToken', newRefreshToken, cookieOptions);
-
-    res.json({
-      user: {
-        id: user._id,
-        full_name: user.full_name,
-        email: user.email,
-        role: user.role,
-        team_id: user.team_id,
-        workspaceId: user.workspaceId?._id || null
-      },
-      workspace: user.workspaceId ? {
-        id: user.workspaceId._id,
-        name: user.workspaceId.name,
-        type: user.workspaceId.type,
-        features: user.workspaceId.settings?.features || {},
-      } : null,
-      isSystemAdmin: !user.workspaceId && user.role === 'admin'
-    });
+    return res.json({ message: 'Token refreshed' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    return res.status(500).json({ message: 'Token refresh failed', error: error.message });
   }
 });
 
-// Verify email with code - security: prevent information disclosure
-router.post('/verify-email', [
-  body('email').isEmail().withMessage('Valid email is required'),
-  body('code').trim().notEmpty().withMessage('Verification code is required')
-], async (req, res) => {
+router.post('/logout', async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+    const accessToken = req.cookies?.accessToken;
+    const refreshToken = req.cookies?.refreshToken;
+
+    if (accessToken) {
+      await blacklistTokenByValue(accessToken, 'access', 'logout');
+    }
+    if (refreshToken) {
+      await blacklistTokenByValue(refreshToken, 'refresh', 'logout');
     }
 
-    const { email, code } = req.body;
+    res.clearCookie('accessToken', { path: '/' });
+    res.clearCookie('refreshToken', { path: '/' });
+    return res.json({ message: 'Logged out successfully' });
+  } catch (error) {
+    return res.status(500).json({ message: 'Logout failed', error: error.message });
+  }
+});
 
-    // Find user
-    const user = await User.findOne({ email })
-      .populate('workspaceId', 'name type');
-    
-    // Always return generic message to prevent enumeration
+router.get('/me', async (req, res) => {
+  try {
+    const accessToken = req.cookies?.accessToken;
+    if (!accessToken) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+
+    const decoded = verifyAccessToken(accessToken);
+    if (!decoded) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+
+    const user = await User.findByPk(decoded.userId);
     if (!user) {
-      return res.status(400).json({ 
-        message: 'Invalid verification code or email.' 
-      });
+      return res.status(401).json({ message: 'User not found' });
     }
 
-    // Check if already verified - return same generic message
-    if (user.isEmailVerified) {
-      return res.status(400).json({ 
-        message: 'Invalid verification code or email.' 
-      });
-    }
-
-    // Check if verification code matches - use constant-time comparison
-    if (user.verificationToken !== code) {
-      return res.status(400).json({ 
-        message: 'Invalid verification code or email.' 
-      });
-    }
-
-    // Check if code has expired - return same generic message
-    if (!user.verificationTokenExpiry || user.verificationTokenExpiry < new Date()) {
-      return res.status(400).json({ 
-        message: 'Invalid verification code or email.' 
-      });
-    }
-
-    // Mark email as verified
-    user.isEmailVerified = true;
-    user.verificationToken = null;
-    user.verificationTokenExpiry = null;
-    await user.save();
-
-    // Log verification event
-    await logChange({
-      event_type: 'system_event',
-      user: user,
-      user_ip: getClientIP(req),
-      action: 'Email verified',
-      description: `${user.full_name} (${user.email}) verified their email address`,
-      metadata: {
-        role: user.role,
-        workspaceId: user.workspaceId?._id || null,
-        workspaceName: user.workspaceId?.name || null,
-      },
-      workspaceId: user.workspaceId?._id || null,
-    });
-
-    res.status(200).json({
-      message: 'Email verified successfully! You can now login.',
-      verified: true,
-      user: {
-        email: user.email,
-        full_name: user.full_name,
-      },
-      workspace: user.workspaceId ? {
-        name: user.workspaceId.name,
-        type: user.workspaceId.type,
-      } : null
-    });
+    return res.json({ user: serializeUser(user) });
   } catch (error) {
-    res.status(500).json({ 
-      message: 'Failed to verify email', 
-      error: error.message 
-    });
+    return res.status(500).json({ message: 'Failed to load profile', error: error.message });
   }
 });
 
-// Resend verification email - security: prevent email enumeration
-router.post('/resend-verification', [
-  body('email').isEmail().withMessage('Valid email is required')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { email } = req.body;
-
-    // Always return generic success message to prevent email enumeration
-    // Process the request silently regardless of whether user exists
-    const user = await User.findOne({ email })
-      .populate('workspaceId', 'name');
-    
-    // Always return same message to prevent enumeration
-    if (!user) {
-      return res.json({ 
-        message: 'If an account exists with that email, a verification email has been sent.' 
-      });
-    }
-
-    // Check if already verified - return same generic message
-    if (user.isEmailVerified) {
-      return res.json({ 
-        message: 'If an account exists with that email, a verification email has been sent.' 
-      });
-    }
-
-    // Generate new verification code
-    const verificationCode = crypto.randomInt(100000, 999999).toString();
-    const verificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-    user.verificationToken = verificationCode;
-    user.verificationTokenExpiry = verificationExpiry;
-    await user.save();
-
-    // Get temporary password from request or use placeholder
-    const tempPassword = req.body.password || '******';
-
-    // Send new verification email
-    await sendVerificationEmail(
-      user.full_name, 
-      user.email, 
-      verificationCode, 
-      tempPassword, 
-      user.workspaceId?.name || 'TaskFlow'
-    );
-
-    res.status(200).json({
-      message: 'Verification email resent successfully. Please check your inbox.',
-      email: user.email
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      message: 'Failed to resend verification email', 
-      error: error.message 
-    });
-  }
+router.get('/my-workspaces', (_req, res) => {
+  res.json({ workspaces: [] });
 });
 
-// Logout
-router.post('/logout', authenticate, async (req, res) => {
-  const user_ip = getClientIP(req);
-
-  await logChange({
-    event_type: 'user_logout',
-    user: req.user,
-    user_ip,
-    action: 'User logged out',
-    description: `${req.user.full_name} (${req.user.email}) logged out`,
-    workspaceId: req.user.workspaceId?._id || null
-  });
-
-  if (req.tokenJti && req.tokenExp) {
-    await blacklistToken({
-      jti: req.tokenJti,
-      tokenType: 'access',
-      userId: req.user._id,
-      expiresAt: req.tokenExp,
-      reason: 'logout'
-    });
-  }
-
-  const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
-  if (refreshToken) {
-    await blacklistTokenByValue(refreshToken, 'refresh', 'logout');
-  }
-
-  const isProduction = process.env.NODE_ENV === 'production';
-  res.clearCookie('accessToken', { path: '/', httpOnly: true, secure: isProduction });
-  res.clearCookie('refreshToken', { path: '/', httpOnly: true, secure: isProduction });
-
-  res.json({ message: 'Logged out successfully' });
-});
-
-// Forgot Password - Send reset link
-router.post('/forgot-password', [
-  body('email').isEmail().withMessage('Valid email is required')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { email } = req.body;
-
-    // Find user by email
-    const user = await User.findOne({ email: email.toLowerCase() });
-    
-    // Always return success to prevent email enumeration
-    if (!user) {
-      return res.json({ 
-        message: 'If an account exists with that email, a password reset code has been sent.' 
-      });
-    }
-
-    // Generate 6-digit reset token
-    const resetToken = crypto.randomInt(100000, 999999).toString();
-    const resetExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-
-    // Save token to user (updates existing token if any)
-    user.resetPasswordToken = resetToken;
-    user.resetPasswordExpiry = resetExpiry;
-    await user.save();
-
-
-    // Send reset email
-    await sendPasswordResetLink(user.full_name, user.email, resetToken);
-
-
-    // Log password reset request
-    const user_ip = getClientIP(req);
-    await logChange({
-      event_type: 'password_reset_request',
-      user: user,
-      user_ip,
-      action: 'Password reset requested',
-      description: `Password reset requested for ${user.email}`,
-      workspaceId: user.workspaceId
-    });
-
-    res.json({ 
-      message: 'If an account exists with that email, a password reset code has been sent.' 
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error. Please try again later.' });
-  }
-});
-
-// Reset Password - Verify token and set new password
-router.post('/reset-password', [
-  body('email').isEmail().withMessage('Valid email is required'),
-  body('token').notEmpty().withMessage('Reset token is required'),
-  body('newPassword').custom((value, { req }) => {
-    const validation = validatePasswordStrength(value);
-    if (!validation.isValid) {
-      throw new Error(validation.errors.join('. '));
-    }
-    return true;
-  })
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { email, token, newPassword } = req.body;
-
-
-    // Find user with valid token and email
-    const user = await User.findOne({
-      email: email.toLowerCase(),
-      resetPasswordToken: token,
-      resetPasswordExpiry: { $gt: Date.now() }
-    });
-
-    if (user) {
-    }
-
-    if (!user) {
-      return res.status(400).json({ 
-        message: 'Invalid or expired reset code. Please request a new password reset.' 
-      });
-    }
-
-    // Update password
-    user.password_hash = newPassword; // Will be hashed by pre-save hook
-    user.resetPasswordToken = null;
-    user.resetPasswordExpiry = null;
-    await user.save();
-
-
-    // Log password reset
-    const user_ip = getClientIP(req);
-    await logChange({
-      event_type: 'password_reset',
-      user: user,
-      user_ip,
-      action: 'Password reset completed',
-      description: `Password successfully reset for ${user.email}`,
-      workspaceId: user.workspaceId
-    });
-
-    res.json({ message: 'Password reset successfully. You can now login with your new password.' });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error. Please try again later.' });
-  }
-});
-
-// Switch Workspace - Change user's current active workspace
-router.post('/switch-workspace', authenticate, async (req, res) => {
-  try {
-    const { workspaceId } = req.body;
-    
-    if (!workspaceId) {
-      return res.status(400).json({ message: 'Workspace ID is required' });
-    }
-
-    if (!isValidObjectIdString(workspaceId)) {
-      return res.status(400).json({ message: 'Invalid workspace ID' });
-    }
-    
-    // Verify workspace exists
-    const workspace = await Workspace.findById(workspaceId)
-      .select('name type settings.features limits usage isActive')
-      .lean();
-    
-    if (!workspace) {
-      return res.status(404).json({ message: 'Workspace not found' });
-    }
-
-    if (!workspace.isActive) {
-      return res.status(403).json({ message: 'Workspace is inactive' });
-    }
-    
-    // Admins can access any workspace, regular users need to belong to it
-    if (req.user.role !== 'admin' && !req.user.belongsToWorkspace(workspaceId)) {
-      return res.status(403).json({ 
-        message: 'You do not have access to this workspace' 
-      });
-    }
-    
-    // Get current workspace before switching (for logging)
-    const fromWorkspaceId = req.user.currentWorkspaceId;
-    
-    // Switch workspace (update currentWorkspaceId)
-    if (req.user.role === 'admin' || req.user.belongsToWorkspace(workspaceId)) {
-      req.user.currentWorkspaceId = workspaceId;
-      await req.user.save();
-    }
-    
-    // Get role in new workspace (admin always has admin role)
-    const roleInWorkspace = req.user.role === 'admin' ? 'admin' : req.user.getRoleInWorkspace(workspaceId);
-    
-    // Log workspace switch
-    await logChange({
-      userId: req.user._id,
-      workspaceId,
-      action: 'switch_workspace',
-      entity: 'workspace',
-      entityId: workspaceId,
-      details: { 
-        fromWorkspace: fromWorkspaceId,
-        toWorkspace: workspaceId,
-        workspaceName: workspace.name
-      },
-      ipAddress: getClientIP(req)
-    });
-    
-    res.json({
-      message: 'Workspace switched successfully',
-      workspace: {
-        id: workspace._id,
-        name: workspace.name,
-        type: workspace.type,
-        features: workspace.settings?.features || {},
-        role: roleInWorkspace
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to switch workspace' });
-  }
-});
-
-// Get all user workspaces
-router.get('/my-workspaces', authenticate, async (req, res) => {
-  try {
-    const workspaces = [];
-    
-    // ADMIN/SUPER ADMIN: Get all workspaces
-    if (req.user.role === 'admin') {
-      const allAvailableWorkspaces = await Workspace.find({ isActive: true })
-        .select('name type settings.features limits usage')
-        .lean();
-      
-      for (const wsData of allAvailableWorkspaces) {
-        workspaces.push({
-          id: wsData._id,
-          name: wsData.name,
-          type: wsData.type,
-          role: 'admin',
-          joinedAt: wsData.createdAt,
-          isCurrent: wsData._id.toString() === req.user.currentWorkspaceId?.toString(),
-          features: wsData.settings?.features || {},
-          usage: wsData.usage
-        });
-      }
-    } else if (req.user.workspaces && req.user.workspaces.length > 0) {
-      // Regular users: Get their assigned workspaces
-      for (const ws of req.user.workspaces) {
-        if (ws.isActive) {
-          const wsData = await Workspace.findById(ws.workspaceId)
-            .select('name type settings.features limits usage')
-            .lean();
-          
-          if (wsData) {
-            workspaces.push({
-              id: wsData._id,
-              name: wsData.name,
-              type: wsData.type,
-              role: ws.role,
-              joinedAt: ws.joinedAt,
-              isCurrent: wsData._id.toString() === req.user.currentWorkspaceId?.toString(),
-              features: wsData.settings?.features || {},
-              usage: wsData.usage
-            });
-          }
-        }
-      }
-    }
-    
-    res.json({ 
-      success: true, 
-      workspaces,
-      currentWorkspaceId: req.user.currentWorkspaceId
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch workspaces' });
-  }
+router.post('/switch-workspace', (_req, res) => {
+  res.status(400).json({ message: 'Workspaces are disabled in this build.' });
 });
 
 export default router;

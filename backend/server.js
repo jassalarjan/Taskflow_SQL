@@ -8,11 +8,9 @@ import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { connectDB } from './config/db.js';
+import connectDB from './config/db.js';
 import { sanitizeRequestInputs } from './utils/requestSanitizer.js';
-
-// Import models and associations
-import './models/index.js';
+import { syncModels } from './models/index.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -22,7 +20,6 @@ import taskRoutes from './routes/tasks.js';
 import commentRoutes from './routes/comments.js';
 import notificationRoutes from './routes/notifications.js';
 import changelogRoutes from './routes/changelog.js';
-import workspaceRoutes from './routes/workspaces.js';
 // HR Module routes
 import attendanceRoutes from './routes/attendance.js';
 import leavesRoutes from './routes/leaves.js';
@@ -36,7 +33,6 @@ import automationTriggersRoutes from './routes/automationTriggers.js';
 
 // Import middleware
 import { authenticate } from './middleware/auth.js';
-import workspaceContext from './middleware/workspaceContext.js';
 
 // Import scheduler
 import { initializeScheduler } from './utils/scheduler.js';
@@ -67,11 +63,19 @@ const io = new Server(httpServer, {
   allowEIO3: true
 });
 
-// Connect to MongoDB
-connectDB();
+// Connect to MySQL and sync models
+const initAppDatabase = async () => {
+  await connectDB();
+  await syncModels();
+};
 
-// Initialize scheduler for automated tasks
-initializeScheduler();
+initAppDatabase().then(() => {
+  // Initialize scheduler for automated tasks after DB ready
+  initializeScheduler();
+}).catch(err => {
+  console.error('Failed to initialize database:', err);
+  process.exit(1);
+});
 
 const parseTrustProxySetting = (value) => {
   if (value === undefined || value === null || value === '') {
@@ -125,23 +129,14 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: false,
+  skip: () => process.env.NODE_ENV === 'development', // Disable rate limiting in development
 });
 
 // Apply general rate limiting to all routes
 app.use('/api', generalLimiter);
 
-// Apply stricter rate limiting to auth routes
+// Apply stricter rate limiting to auth routes (disabled in development)
 app.use('/api/auth', authLimiter);
-
-// Special rate limiting for workspace creation to prevent abuse
-const workspaceLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // 10 workspaces per hour per IP
-  message: { message: 'Too many workspace requests. Please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use('/api/workspaces', workspaceLimiter);
 
 // Request size limiting - prevent large payload attacks
 app.use(express.json({ limit: '500kb' }));
@@ -153,8 +148,10 @@ app.use(cors({
     // Always-allowed origins for the application
     const allowedOrigins = [
       'http://localhost:3000',
+      'http://localhost:3001',
       'http://localhost:5173',
       'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
       'http://127.0.0.1:5173',
       'https://taskflow-nine-phi.vercel.app'
     ];
@@ -221,29 +218,39 @@ io.on('connection', (socket) => {
 // Auth routes (public, no workspace context needed for login/register)
 app.use('/api/auth', authRoutes);
 
-// Protected routes with workspace context
-// Apply authentication and workspace context to all protected routes
-app.use('/api/users', authenticate, workspaceContext, userRoutes);
-app.use('/api/teams', authenticate, workspaceContext, teamRoutes);
-app.use('/api/tasks', authenticate, workspaceContext, taskRoutes);
-app.use('/api/comments', authenticate, workspaceContext, commentRoutes);
-app.use('/api/notifications', authenticate, workspaceContext, notificationRoutes);
-app.use('/api/changelog', authenticate, workspaceContext, changelogRoutes);
-app.use('/api/workspaces', workspaceRoutes); // Workspace routes handle their own auth/context
-// HR Module routes with workspace context
-app.use('/api/hr/attendance', authenticate, workspaceContext, attendanceRoutes);
-app.use('/api/hr/leaves', authenticate, workspaceContext, leavesRoutes);
-app.use('/api/hr/leave-types', authenticate, workspaceContext, leaveTypesRoutes);
-app.use('/api/hr/holidays', authenticate, workspaceContext, holidaysRoutes);
-app.use('/api/hr/calendar', authenticate, workspaceContext, hrCalendarRoutes);
-app.use('/api/hr/email-templates', authenticate, workspaceContext, emailTemplatesRoutes);
+// Protected routes with auth only
+app.use('/api/users', authenticate, userRoutes);
+app.use('/api/teams', authenticate, teamRoutes);
+app.use('/api/tasks', authenticate, taskRoutes);
+app.use('/api/comments', authenticate, commentRoutes);
+app.use('/api/notifications', authenticate, notificationRoutes);
+app.use('/api/changelog', authenticate, changelogRoutes);
+// HR Module routes
+app.use('/api/hr/attendance', authenticate, attendanceRoutes);
+app.use('/api/hr/leaves', authenticate, leavesRoutes);
+app.use('/api/hr/leave-types', authenticate, leaveTypesRoutes);
+app.use('/api/hr/holidays', authenticate, holidaysRoutes);
+app.use('/api/hr/calendar', authenticate, hrCalendarRoutes);
+app.use('/api/hr/email-templates', authenticate, emailTemplatesRoutes);
 app.use('/api/user/email-preferences', authenticate, emailNotificationPreferencesRoutes);
-app.use('/api/hr/scheduled-campaigns', authenticate, workspaceContext, scheduledEmailCampaignsRoutes);
+app.use('/api/hr/scheduled-campaigns', authenticate, scheduledEmailCampaignsRoutes);
 app.use('/api/automation', automationTriggersRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'CTMS Backend is running' });
+});
+
+// Serve frontend static files (if present)
+const frontendDist = path.join(__dirname, '../frontend/dist');
+app.use(express.static(frontendDist));
+
+// Fallback to index.html for client-side routes (ignore API routes)
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
+  res.sendFile(path.join(frontendDist, 'index.html'), (err) => {
+    if (err) next(err);
+  });
 });
 
 // Email configuration test endpoint
@@ -315,7 +322,7 @@ app.post('/api/test-email-send', async (req, res) => {
   }
 });
 
-// 404 handler
+// 404 handler for API routes
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found' });
 });

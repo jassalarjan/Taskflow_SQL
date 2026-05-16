@@ -3,8 +3,8 @@ import { sequelize } from '../config/db.js';
 
 const Recipient = sequelize.define('Recipient', {
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
+    type: DataTypes.BIGINT.UNSIGNED,
+    autoIncrement: true,
     primaryKey: true
   },
   email: {
@@ -21,7 +21,7 @@ const Recipient = sequelize.define('Recipient', {
     defaultValue: 'EXTERNAL'
   },
   linkedUserId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: true,
     references: {
       model: 'Users',
@@ -29,7 +29,7 @@ const Recipient = sequelize.define('Recipient', {
     }
   },
   workspaceId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'Workspaces',

@@ -3,12 +3,12 @@ import { sequelize } from '../config/db.js';
 
 const LeaveRequest = sequelize.define('LeaveRequest', {
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
+    type: DataTypes.BIGINT.UNSIGNED,
+    autoIncrement: true,
     primaryKey: true
   },
   userId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'Users',
@@ -16,7 +16,7 @@ const LeaveRequest = sequelize.define('LeaveRequest', {
     }
   },
   workspaceId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'Workspaces',
@@ -24,7 +24,7 @@ const LeaveRequest = sequelize.define('LeaveRequest', {
     }
   },
   leaveTypeId: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: false,
     references: {
       model: 'LeaveTypes',
@@ -52,7 +52,7 @@ const LeaveRequest = sequelize.define('LeaveRequest', {
     defaultValue: 'pending'
   },
   approvedBy: {
-    type: DataTypes.UUID,
+    type: DataTypes.BIGINT.UNSIGNED,
     allowNull: true,
     references: {
       model: 'Users',

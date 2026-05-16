@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import RevokedToken from '../models/RevokedToken.js';
+import { RevokedToken } from '../models/index.js';
 
 // Token configuration - balanced for user experience and security
 const ACCESS_TOKEN_EXPIRY = '1h';  // 1 hour - balanced for UX and security
@@ -130,21 +130,13 @@ export const blacklistToken = async ({
     return;
   }
 
-  await RevokedToken.findOneAndUpdate(
-    { jti },
-    {
-      jti,
-      tokenType,
-      userId,
-      expiresAt,
-      reason,
-    },
-    {
-      upsert: true,
-      new: true,
-      setDefaultsOnInsert: true,
-    }
-  );
+  await RevokedToken.upsert({
+    jti,
+    tokenType,
+    userId,
+    expiresAt,
+    reason,
+  });
 };
 
 export const blacklistTokenByValue = async (token, tokenType = 'access', reason = 'revoked') => {
@@ -167,7 +159,7 @@ export const isTokenBlacklisted = async (jti) => {
     return false;
   }
 
-  const revokedToken = await RevokedToken.findOne({ jti }).select('_id').lean();
+  const revokedToken = await RevokedToken.findOne({ where: { jti } });
   return Boolean(revokedToken);
 };
 

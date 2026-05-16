@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { X, AlertTriangle, Trash2, LogOut, Info } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 

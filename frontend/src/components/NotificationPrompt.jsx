@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Bell, X, Smartphone } from 'lucide-react';
 import notificationService from '../utils/notificationService';
 

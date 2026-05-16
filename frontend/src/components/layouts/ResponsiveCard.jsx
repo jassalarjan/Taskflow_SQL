@@ -1,4 +1,4 @@
-import { useTheme } from '../../context/ThemeContext';
+import React, { useTheme } from 'react';
 
 /**
  * ResponsiveCard - A mobile-first card component

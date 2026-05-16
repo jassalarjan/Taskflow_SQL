@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useSidebar } from '../context/SidebarContext';
@@ -528,7 +528,7 @@ export default function CommunityUserManagement() {
               {modalMode === 'create' && (
                 <div>
                   <label className={`block text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>
-                    Password *
+                    Password * (minimum 8 characters)
                   </label>
                   <input
                     type="password"
@@ -536,7 +536,7 @@ export default function CommunityUserManagement() {
                     value={formData.password}
                     onChange={handleInputChange}
                     required={modalMode === 'create'}
-                    minLength={6}
+                    minLength={8}
                     className={`w-full px-4 py-2 border rounded-lg ${
                       isDark 
                         ? 'bg-[#1a1f2e] border-gray-700 text-white' 

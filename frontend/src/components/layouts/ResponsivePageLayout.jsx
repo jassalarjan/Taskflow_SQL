@@ -1,3 +1,4 @@
+import React from 'react';
 import { useSidebar } from '../../context/SidebarContext';
 import { useTheme } from '../../context/ThemeContext';
 import Sidebar from '../Sidebar';

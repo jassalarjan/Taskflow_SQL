@@ -1,65 +1,30 @@
 import User from '../models/User.js';
 import Workspace from '../models/Workspace.js';
 
-// UUID validation pattern (standard RFC 4122 UUID)
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const isValidUUID = (value) => UUID_PATTERN.test(value);
-
 /**
  * Workspace Context Middleware
  * 
- * Resolves the user's current workspace and attaches workspace context to req.context
- * This ensures all queries are automatically scoped to the user's active workspace
- * 
- * MULTI-WORKSPACE SUPPORT:
- * - Users can belong to multiple workspaces
- * - req.context.workspaceId contains the current active workspace
- * - HR/Admin users can access leave requests across all their workspaces
- * 
+ * Attaches workspace context to req.context for all authenticated requests
  * Must be used AFTER authentication middleware (auth.js)
  */
 const workspaceContext = async (req, res, next) => {
   try {
-    // Skip workspace resolution for public endpoints
-    if (!req.user || !req.user._id) {
+    // Skip middleware for unauthenticated requests
+    if (!req.user || !req.user.id) {
       return next();
     }
 
-    // User is already fetched in auth middleware, use it directly
     const user = req.user;
+    const workspaceId = user.workspaceId;
 
-    if (!user) {
-      return res.status(401).json({ 
-        message: 'User not found',
-        error: 'INVALID_USER' 
-      });
-    }
-
-    // Check for workspace override in header (for workspace switching)
-    const requestedWorkspaceId = req.headers['x-workspace-id'];
-    
-    // Validate workspace ID format if provided (prevents injection attacks)
-    if (requestedWorkspaceId && !isValidUUID(requestedWorkspaceId)) {
-      return res.status(400).json({ 
-        message: 'Invalid workspace ID format',
-        error: 'INVALID_WORKSPACE_ID'
-      });
-    }
-    
-    let activeWorkspaceId = requestedWorkspaceId || user.currentWorkspaceId || user.workspaceId;
-    
-    // Skip workspace resolution for workspace creation endpoint
-    // This allows users without workspaces to create their first workspace
-    if (req.path === '/' && req.method === 'POST') {
+    // If user doesn't have a workspace, allow but set empty context
+    if (!workspaceId) {
       req.context = {
         workspaceId: null,
-        workspaceType: 'NONE',
+        workspaceType: null,
         workspaceName: null,
-        workspace: null,
-        isSystemAdmin: false,
-        allWorkspaceIds: [],
         user: {
-          id: user._id,
+          id: user.id,
           email: user.email,
           role: user.role,
           full_name: user.full_name,
@@ -68,138 +33,29 @@ const workspaceContext = async (req, res, next) => {
       return next();
     }
 
-    // If user has no workspace set
+    // Fetch workspace if workspaceId exists
+    const workspace = await Workspace.findByPk(workspaceId);
 
-    if (!activeWorkspaceId) {
-      // ADMIN PRIVILEGE: Admins can exist without workspace (system-wide access)
-      if (user.role === 'admin') {
-        req.context = {
-          workspaceId: null,
-          workspaceType: 'SYSTEM',
-          workspaceName: 'System Administrator',
-          workspace: null,
-          isSystemAdmin: true,
-          allWorkspaceIds: [],
-          user: {
-            id: user._id,
-            email: user.email,
-            role: user.role,
-            full_name: user.full_name,
-          },
-        };
-
-        // System admins have all privileges
-        req.isCoreWorkspace = () => true;
-        req.isCommunityWorkspace = () => false;
-        req.hasFeature = () => true;
-        req.canAddUser = () => true;
-        req.canAddTask = () => true;
-        req.canAddTeam = () => true;
-
-        return next();
-      }
-      
-      // Check if user has any workspaces in the new multi-workspace array
-      if (user.workspaces && user.workspaces.length > 0) {
-        const firstActiveWorkspace = user.workspaces.find(ws => ws.isActive);
-        if (firstActiveWorkspace) {
-          activeWorkspaceId = firstActiveWorkspace.workspaceId;
-          // Note: We no longer auto-save user in middleware to avoid side effects
-          // The currentWorkspaceId is set in memory for this request only
-        } else {
-          return res.status(403).json({
-            message: 'User has no active workspaces. Please contact support.',
-            error: 'NO_ACTIVE_WORKSPACE'
-          });
-        }
-      } else {
-        return res.status(403).json({
-          message: 'User is not associated with any workspace. Please contact support.',
-          error: 'NO_WORKSPACE'
-        });
-      }
-    }
-    
-    // Validate that user belongs to the requested workspace
-    // Admins can access any workspace
-    if (requestedWorkspaceId && user.role !== 'admin' && !user.belongsToWorkspace(requestedWorkspaceId)) {
-      return res.status(403).json({
-        message: 'You do not have access to this workspace',
-        error: 'WORKSPACE_ACCESS_DENIED'
-      });
-    }
-
-    // Fetch the active workspace
-    let workspace = await Workspace.findById(activeWorkspaceId)
-      .select('name type isActive settings limits usage')
-      .lean();
-    
-    if (!workspace) {
-      return res.status(403).json({ 
-        message: 'Workspace not found',
-        error: 'INVALID_WORKSPACE' 
-      });
-    }
-
-    // Check workspace active status
-    if (!workspace.isActive) {
-      return res.status(403).json({ 
-        message: 'Your workspace has been deactivated. Please contact support.',
-        error: 'WORKSPACE_INACTIVE',
-        workspaceId: workspace._id
-      });
-    }
-    
-    // Get all workspace IDs user belongs to (for cross-workspace queries like HR leave management)
-    // Support both new multi-workspace array and legacy single workspace field
-    let allWorkspaceIds;
-    let manageableWorkspaceIds;
-    if (user.workspaces && user.workspaces.length > 0) {
-      allWorkspaceIds = user.workspaces
-        .filter(ws => ws.isActive)
-        .map(ws => ws.workspaceId);
-      manageableWorkspaceIds = user.workspaces
-        .filter(ws => ws.isActive && ['admin', 'hr', 'community_admin'].includes(ws.role))
-        .map(ws => ws.workspaceId);
-    } else {
-      // Fallback to legacy workspace field(s)
-      allWorkspaceIds = [activeWorkspaceId];
-      manageableWorkspaceIds = ['admin', 'hr', 'community_admin'].includes(user.role)
-        ? [activeWorkspaceId]
-        : [];
-    }
-    
-    // Get role in current workspace
-    const roleInWorkspace = user.getRoleInWorkspace(activeWorkspaceId) || user.role;
-
-
-
-    // Attach workspace context to request
     req.context = {
-      workspaceId: workspace._id,
-      workspaceType: workspace.type,
-      workspaceName: workspace.name,
-      workspace: workspace, // Full workspace object for feature checks
-      isSystemAdmin: false,
-      allWorkspaceIds: allWorkspaceIds, // All workspaces user belongs to
-      manageableWorkspaceIds,
-      currentRole: roleInWorkspace, // Role in current workspace
+      workspaceId: workspaceId,
+      workspaceType: workspace?.type || null,
+      workspaceName: workspace?.name || null,
       user: {
-        id: user._id,
+        id: user.id,
         email: user.email,
         role: user.role,
         full_name: user.full_name,
       },
     };
-    req.currentRole = roleInWorkspace;
-    req.hasWorkspaceRole = (...roles) => roles.includes(roleInWorkspace);
 
-    // Helper methods for easy access
-    req.isCoreWorkspace = () => workspace.type === 'CORE';
-    req.isCommunityWorkspace = () => workspace.type === 'COMMUNITY';
-    req.hasFeature = (featureName) => workspace.settings?.features?.[featureName] === true;
-    req.canAddUser = () => {
-      if (workspace.type === 'CORE' || !workspace.limits?.maxUsers) return true;
+    next();
+  } catch (error) {
+    console.error('Workspace context error:', error);
+    res.status(500).json({ message: 'Workspace context error', error: error.message });
+  }
+};
+
+export default workspaceContext;
       return workspace.usage?.userCount < workspace.limits.maxUsers;
     };
     req.canAddTask = () => {

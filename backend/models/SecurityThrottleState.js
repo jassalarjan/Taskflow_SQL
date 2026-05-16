@@ -3,8 +3,8 @@ import { sequelize } from '../config/db.js';
 
 const SecurityThrottleState = sequelize.define('SecurityThrottleState', {
   id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
+    type: DataTypes.BIGINT.UNSIGNED,
+    autoIncrement: true,
     primaryKey: true
   },
   ip: {
